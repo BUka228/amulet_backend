@@ -24,10 +24,13 @@
   - `displayName`, `avatarUrl`, `timezone`, `language`, `consents`, `pushTokens[]`, `createdAt`, `updatedAt`
 - Device: `devices/{deviceId}`
   - `ownerId`, `serial`, `hardwareVersion`, `firmwareVersion`, `name`, `batteryLevel`, `status`, `pairedAt`, `settings{brightness, haptics, gestures}`
+- Session: `sessions/{sessionId}`
+  - `ownerId`, `practiceId`, `deviceId`, `status{started|completed|aborted}`
+  - `startedAt`, `endedAt`, `durationSec`, `userFeedback?{moodBefore, moodAfter}`, `source{manual|rule}`
 - Pairing (связь пользователей): `pairs/{pairId}`
   - `memberIds[2]`, `status{active|pending|blocked}`, `createdAt`
 - Hug (объятие): `hugs/{hugId}`
-  - `fromUserId`, `toUserId`, `pairId`, `emotion{color, patternId}`, `payload?`, `deliveredAt?`, `createdAt`
+  - `fromUserId`, `toUserId`, `pairId`, `emotion{color, patternId}`, `payload?`, `inReplyToHugId?`, `deliveredAt?`, `createdAt`
 - Practice: `practices/{practiceId}` (контент)
   - `type{breath|meditation|sound}`, `title`, `desc`, `durationSec`, `patternId`, `audioUrl?`, `locales{}`
 - Pattern: `patterns/{patternId}`
@@ -56,7 +59,7 @@
 
 ### Устройства
 - POST /v1/devices.claim — Привязать устройство к аккаунту
-  - body: `{ serial, proof?, name? }`
+  - body: `{ serial, claimToken, name? }`
   - 200: `{ device }`
 - GET /v1/devices — Список устройств пользователя
   - 200: `{ devices: Device[] }`
@@ -70,7 +73,7 @@
 
 ### «Объятия» (Hugs)
 - POST /v1/hugs.send — Отправить «объятие»
-  - body: `{ toUserId|pairId, emotion: { color, patternId }, payload? }`
+  - body: `{ toUserId?, pairId?, emotion: { color, patternId }, payload? }` (требуется указать хотя бы одно из `toUserId` или `pairId`)
   - 200: `{ hugId, delivered: boolean }`
 - GET /v1/hugs — История с пагинацией
   - query: `direction?=sent|received`, `cursor?`, `limit?`
@@ -140,7 +143,7 @@
   - 200: `{ ok: true }`
 
 ### OTA / прошивки
-- GET /v1/ota/firmware/latest?hardware=200 — Проверка обновления
+- GET /v1/ota/firmware/latest?hardware=200&currentFirmware=205 — Проверка обновления
   - 200: `{ version, notes?, url, checksum }`
 - POST /v1/devices/:deviceId/firmware/report — Отчёт об установке
   - body: `{ fromVersion, toVersion, status }`
@@ -162,10 +165,11 @@
 - `users` (поиск по email через Auth; в БД индекс по `displayName`, `language`)
 - `devices` (индексы: `ownerId`, `serial` уникальный)
 - `pairs` (составной индекс: `memberIds` array-contains, `status`)
-- `hugs` (индексы: `fromUserId`, `toUserId`, `createdAt desc`)
+- `hugs` (индексы: `fromUserId`, `toUserId`, `createdAt desc`, `inReplyToHugId`)
 - `practices` (индексы: `type`, `locales.xx.title`)
 - `patterns` (индексы: `ownerId`, `public`, `reviewStatus`)
 - `rules` (индексы: `ownerId`, `enabled`)
+- `sessions` (индексы: `ownerId`, `practiceId`, `status`, `startedAt desc`)
 
 ## Реалтайм-каналы
 - FCM пуши:
@@ -211,7 +215,7 @@ POST /v1/devices.claim
 Authorization: Bearer <ID_TOKEN>
 Content-Type: application/json
 
-{ "serial": "AMU-200-XYZ-001", "name": "Мой амулет" }
+{ "serial": "AMU-200-XYZ-001", "claimToken": "nfc_otp_123", "name": "Мой амулет" }
 ```
 Ответ: `{ "device": { ... } }`
 
@@ -229,6 +233,7 @@ Content-Type: application/json
 ## Наблюдаемость
 - Структурированное логирование (requestId, userId, deviceId)
 - Трассировки (Cloud Trace), метрики (Cloud Monitoring), алерты
+  - Алертинг: настроить оповещения в Cloud Monitoring на аномальное количество 5xx от Cloud Functions, рост времени выполнения, ошибки доставки FCM и провалы OTA-отчётов.
 
 ## Декомпозиция функций (пример)
 - `apiUsers` — users.me.*
@@ -239,7 +244,9 @@ Content-Type: application/json
 - `apiRules` — rules/webhooks
 - `apiOta` — ota/firmware
 - `apiTelemetry` — telemetry/events
-- `apiAdmin` — admin.*
+- `adminUsers` — админ-операции над пользователями
+- `adminContent` — модерация/публикация контента и паттернов
+- `adminDevices` — управление устройствами и прошивками
 
 ## Миграции версий
 - Ввод новых эндпоинтов под `/v2` без поломки существующих клиентов.
