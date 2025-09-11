@@ -1,0 +1,1427 @@
+openapi: 3.0.3
+info:
+  title: Amulet Public API
+  version: "1.0.0"
+  description: |
+    OpenAPI-спецификация публичного HTTPS API `/v1` (Firebase Cloud Functions).
+    Аутентификация — Firebase ID Token (Bearer), App Check — обязательный для мобильных клиентов.
+servers:
+  - url: https://api.amulet.app/v1
+    description: Production
+  - url: https://{region}-{project}.cloudfunctions.net/api
+    variables:
+      region:
+        default: europe-west1
+      project:
+        default: amulet-prod
+tags:
+  - name: users
+  - name: devices
+  - name: hugs
+  - name: pairs
+  - name: library
+  - name: patterns
+  - name: sessions
+  - name: stats
+  - name: rules
+  - name: webhooks
+  - name: notifications
+  - name: ota
+  - name: telemetry
+  - name: admin
+security:
+  - BearerAuth: []
+  - AppCheck: []
+paths:
+  /users.me.init:
+    post:
+      tags: [users]
+      summary: Инициализация профиля текущего пользователя
+      security:
+        - BearerAuth: []
+          AppCheck: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserInitRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+  /users.me:
+    get:
+      tags: [users]
+      summary: Получить профиль текущего пользователя
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+    patch:
+      tags: [users]
+      summary: Обновить профиль пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+  /users.me/delete:
+    post:
+      tags: [users]
+      summary: Запрос на удаление аккаунта (асинхронно)
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+
+  /devices.claim:
+    post:
+      tags: [devices]
+      summary: Привязать устройство к аккаунту
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceClaimRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  device:
+                    $ref: '#/components/schemas/Device'
+  /devices:
+    get:
+      tags: [devices]
+      summary: Список устройств текущего пользователя
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  devices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Device'
+  /devices/{deviceId}:
+    get:
+      tags: [devices]
+      summary: Детали устройства
+      parameters:
+        - in: path
+          name: deviceId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  device:
+                    $ref: '#/components/schemas/Device'
+    patch:
+      tags: [devices]
+      summary: Обновить настройки устройства
+      parameters:
+        - in: path
+          name: deviceId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceUpdateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  device:
+                    $ref: '#/components/schemas/Device'
+  /devices/{deviceId}/unclaim:
+    post:
+      tags: [devices]
+      summary: Отвязать устройство
+      parameters:
+        - in: path
+          name: deviceId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /hugs.send:
+    post:
+      tags: [hugs]
+      summary: Отправить «объятие»
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HugSendRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hugId:
+                    type: string
+                  delivered:
+                    type: boolean
+  /hugs:
+    get:
+      tags: [hugs]
+      summary: История «объятий»
+      parameters:
+        - in: query
+          name: direction
+          schema:
+            type: string
+            enum: [sent, received]
+        - in: query
+          name: cursor
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Hug'
+                  nextCursor:
+                    type: string
+  /hugs/{hugId}:
+    get:
+      tags: [hugs]
+      summary: Детали «объятия»
+      parameters:
+        - in: path
+          name: hugId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hug:
+                    $ref: '#/components/schemas/Hug'
+
+  /pairs.invite:
+    post:
+      tags: [pairs]
+      summary: Пригласить партнёра
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PairInviteRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  inviteId:
+                    type: string
+                  url:
+                    type: string
+  /pairs.accept:
+    post:
+      tags: [pairs]
+      summary: Принять приглашение
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PairAcceptRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pair:
+                    $ref: '#/components/schemas/Pair'
+  /pairs:
+    get:
+      tags: [pairs]
+      summary: Список пар
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pairs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Pair'
+  /pairs/{pairId}/block:
+    post:
+      tags: [pairs]
+      summary: Заблокировать пару
+      parameters:
+        - in: path
+          name: pairId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pair:
+                    $ref: '#/components/schemas/Pair'
+
+  /practices:
+    get:
+      tags: [library]
+      summary: Каталог практик
+      parameters:
+        - in: query
+          name: type
+          schema:
+            type: string
+        - in: query
+          name: lang
+          schema:
+            type: string
+        - in: query
+          name: cursor
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Practice'
+                  nextCursor:
+                    type: string
+  /practices/{practiceId}:
+    get:
+      tags: [library]
+      summary: Детали практики
+      parameters:
+        - in: path
+          name: practiceId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  practice:
+                    $ref: '#/components/schemas/Practice'
+
+  /patterns:
+    get:
+      tags: [patterns]
+    
+      summary: Публичные паттерны
+      parameters:
+        - in: query
+          name: hardwareVersion
+          schema:
+            type: integer
+        - in: query
+          name: kind
+          schema:
+            type: string
+        - in: query
+          name: tags
+          schema:
+            type: string
+        - in: query
+          name: cursor
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Pattern'
+                  nextCursor:
+                    type: string
+  /patterns.mine:
+    get:
+      tags: [patterns]
+      summary: Мои паттерны
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Pattern'
+  /patterns/{patternId}:
+    get:
+      tags: [patterns]
+      summary: Детали паттерна
+      parameters:
+        - in: path
+          name: patternId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pattern:
+                    $ref: '#/components/schemas/Pattern'
+    patch:
+      tags: [patterns]
+      summary: Обновить паттерн
+      parameters:
+        - in: path
+          name: patternId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatternUpdateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pattern:
+                    $ref: '#/components/schemas/Pattern'
+    delete:
+      tags: [patterns]
+      summary: Удалить паттерн
+      parameters:
+        - in: path
+          name: patternId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+  /patterns:
+    post:
+      tags: [patterns]
+      summary: Создать пользовательский паттерн
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatternCreateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pattern:
+                    $ref: '#/components/schemas/Pattern'
+  /patterns/{patternId}/share:
+    post:
+      tags: [patterns]
+      summary: Поделиться паттерном с партнёром
+      parameters:
+        - in: path
+          name: patternId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatternShareRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shared:
+                    type: boolean
+  /patterns/preview:
+    post:
+      tags: [patterns]
+      summary: Предпросмотр паттерна на устройстве
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatternPreviewRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  previewId:
+                    type: string
+
+  /practices/{practiceId}/start:
+    post:
+      tags: [sessions]
+      summary: Старт сессии практики
+      parameters:
+        - in: path
+          name: practiceId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PracticeStartRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: string
+  /practices.session/{sessionId}/stop:
+    post:
+      tags: [sessions]
+      summary: Остановка сессии
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PracticeStopRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    $ref: '#/components/schemas/PracticeSummary'
+
+  /stats/overview:
+    get:
+      tags: [stats]
+      summary: Обзорная статистика
+      parameters:
+        - in: query
+          name: range
+          required: true
+          schema:
+            type: string
+            enum: [day, week, month]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totals:
+                    type: object
+                  streaks:
+                    type: object
+
+  /rules:
+    get:
+      tags: [rules]
+      summary: Список правил
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Rule'
+    post:
+      tags: [rules]
+      summary: Создать правило
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleCreateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rule:
+                    $ref: '#/components/schemas/Rule'
+  /rules/{ruleId}:
+    patch:
+      tags: [rules]
+      summary: Обновить правило
+      parameters:
+        - in: path
+          name: ruleId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleUpdateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rule:
+                    $ref: '#/components/schemas/Rule'
+    delete:
+      tags: [rules]
+      summary: Удалить правило
+      parameters:
+        - in: path
+          name: ruleId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+  /webhooks/{integrationKey}:
+    post:
+      tags: [webhooks]
+      summary: Входящий вебхук триггера
+      parameters:
+        - in: path
+          name: integrationKey
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: boolean
+
+  /notifications.tokens:
+    post:
+      tags: [notifications]
+      summary: Зарегистрировать FCM‑токен
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FcmTokenAddRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+    delete:
+      tags: [notifications]
+      summary: Отвязать FCM‑токен
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FcmTokenDeleteRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /ota/firmware/latest:
+    get:
+      tags: [ota]
+      summary: Проверка обновления прошивки
+      parameters:
+        - in: query
+          name: hardware
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: currentFirmware
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareInfo'
+  /devices/{deviceId}/firmware/report:
+    post:
+      tags: [ota]
+      summary: Отчёт об установке прошивки
+      parameters:
+        - in: path
+          name: deviceId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirmwareReportRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /telemetry/events:
+    post:
+      tags: [telemetry]
+      summary: Пакет событий телеметрии
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TelemetryEventsRequest'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: integer
+
+  /admin/practices:
+    get:
+      tags: [admin]
+      summary: Модерация контента (фильтр по статусу)
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [admin]
+      summary: Создать/обновить контент практик
+      responses:
+        '200':
+          description: OK
+  /admin/patterns/{id}/review:
+    post:
+      tags: [admin]
+      summary: Апрув/реджект пользовательского паттерна
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /admin/devices:
+    get:
+      tags: [admin]
+      summary: Поиск устройств
+      parameters:
+        - in: query
+          name: ownerId
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /admin/firmware:
+    post:
+      tags: [admin]
+      summary: Публикация новой прошивки (метаданные)
+      responses:
+        '200':
+          description: OK
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Firebase ID Token
+    AppCheck:
+      type: apiKey
+      in: header
+      name: X-Firebase-AppCheck
+      description: App Check Token
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+        timezone:
+          type: string
+        language:
+          type: string
+        consents:
+          type: object
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    UserInitRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+        timezone:
+          type: string
+        language:
+          type: string
+        consents:
+          type: object
+    UserUpdateRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+        timezone:
+          type: string
+        language:
+          type: string
+        consents:
+          type: object
+
+    Device:
+      type: object
+      properties:
+        id:
+          type: string
+        ownerId:
+          type: string
+        serial:
+          type: string
+        hardwareVersion:
+          type: integer
+        firmwareVersion:
+          type: integer
+        name:
+          type: string
+        batteryLevel:
+          type: number
+        status:
+          type: string
+        pairedAt:
+          type: string
+          format: date-time
+        settings:
+          type: object
+          properties:
+            brightness:
+              type: number
+            haptics:
+              type: number
+            gestures:
+              type: object
+    DeviceClaimRequest:
+      type: object
+      required: [serial, claimToken]
+      properties:
+        serial:
+          type: string
+        claimToken:
+          type: string
+        name:
+          type: string
+    DeviceUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        settings:
+          type: object
+
+    Hug:
+      type: object
+      properties:
+        id:
+          type: string
+        fromUserId:
+          type: string
+        toUserId:
+          type: string
+        pairId:
+          type: string
+        emotion:
+          type: object
+          properties:
+            color:
+              type: string
+            patternId:
+              type: string
+        payload:
+          type: object
+        inReplyToHugId:
+          type: string
+        deliveredAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    HugSendRequest:
+      type: object
+      required: [emotion]
+      properties:
+        toUserId:
+          type: string
+        pairId:
+          type: string
+        emotion:
+          type: object
+          required: [color, patternId]
+          properties:
+            color:
+              type: string
+            patternId:
+              type: string
+        payload:
+          type: object
+
+    Pair:
+      type: object
+      properties:
+        id:
+          type: string
+        memberIds:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [active, pending, blocked]
+        createdAt:
+          type: string
+          format: date-time
+    PairInviteRequest:
+      type: object
+      required: [method]
+      properties:
+        method:
+          type: string
+          enum: [link, qr, email]
+        target:
+          type: string
+    PairAcceptRequest:
+      type: object
+      required: [inviteId]
+      properties:
+        inviteId:
+          type: string
+
+    Practice:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [breath, meditation, sound]
+        title:
+          type: string
+        desc:
+          type: string
+        durationSec:
+          type: integer
+        patternId:
+          type: string
+        audioUrl:
+          type: string
+        locales:
+          type: object
+    PracticeStartRequest:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        intensity:
+          type: number
+        brightness:
+          type: number
+    PracticeStopRequest:
+      type: object
+      required: [completed]
+      properties:
+        completed:
+          type: boolean
+        durationSec:
+          type: integer
+    PracticeSummary:
+      type: object
+      properties:
+        durationSec:
+          type: integer
+        completed:
+          type: boolean
+
+    Pattern:
+      type: object
+      properties:
+        id:
+          type: string
+        ownerId:
+          type: string
+        kind:
+          type: string
+          enum: [light, haptic, combo]
+        spec:
+          $ref: '#/components/schemas/PatternSpec'
+        public:
+          type: boolean
+        reviewStatus:
+          type: string
+        hardwareVersion:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PatternSpec:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [breathing, pulse, rainbow, fire, gradient, chase, custom]
+        hardwareVersion:
+          type: integer
+          enum: [100, 200]
+        duration:
+          type: integer
+        loop:
+          type: boolean
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              startTime:
+                type: integer
+              duration:
+                type: integer
+              color:
+                type: string
+              colors:
+                type: array
+                items:
+                  type: string
+              intensity:
+                type: number
+              speed:
+                type: number
+              direction:
+                type: string
+                enum: [clockwise, counterclockwise, center, outward]
+              leds:
+                type: array
+                items:
+                  type: integer
+    PatternCreateRequest:
+      type: object
+      required: [kind, spec, hardwareVersion]
+      properties:
+        kind:
+          type: string
+        spec:
+          $ref: '#/components/schemas/PatternSpec'
+        title:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        public:
+          type: boolean
+        hardwareVersion:
+          type: integer
+    PatternUpdateRequest:
+      type: object
+      properties:
+        kind:
+          type: string
+        spec:
+          $ref: '#/components/schemas/PatternSpec'
+        title:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        public:
+          type: boolean
+    PatternShareRequest:
+      type: object
+      properties:
+        toUserId:
+          type: string
+        pairId:
+          type: string
+    PatternPreviewRequest:
+      type: object
+      required: [deviceId, spec]
+      properties:
+        deviceId:
+          type: string
+        spec:
+          $ref: '#/components/schemas/PatternSpec'
+        duration:
+          type: integer
+
+    Rule:
+      type: object
+      properties:
+        id:
+          type: string
+        ownerId:
+          type: string
+        trigger:
+          $ref: '#/components/schemas/RuleTrigger'
+        action:
+          $ref: '#/components/schemas/RuleAction'
+        enabled:
+          type: boolean
+        schedule:
+          type: object
+    RuleTrigger:
+      type: object
+      properties:
+        type:
+          type: string
+        params:
+          type: object
+    RuleAction:
+      type: object
+      properties:
+        type:
+          type: string
+        params:
+          type: object
+    RuleCreateRequest:
+      type: object
+      required: [trigger, action, enabled]
+      properties:
+        trigger:
+          $ref: '#/components/schemas/RuleTrigger'
+        action:
+          $ref: '#/components/schemas/RuleAction'
+        schedule:
+          type: object
+        enabled:
+          type: boolean
+    RuleUpdateRequest:
+      type: object
+      properties:
+        trigger:
+          $ref: '#/components/schemas/RuleTrigger'
+        action:
+          $ref: '#/components/schemas/RuleAction'
+        schedule:
+          type: object
+        enabled:
+          type: boolean
+
+    FcmTokenAddRequest:
+      type: object
+      required: [token, platform]
+      properties:
+        token:
+          type: string
+        platform:
+          type: string
+          enum: [ios, android, web]
+    FcmTokenDeleteRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
+    FirmwareInfo:
+      type: object
+      properties:
+        version:
+          type: integer
+        notes:
+          type: string
+        url:
+          type: string
+        checksum:
+          type: string
+    FirmwareReportRequest:
+      type: object
+      required: [fromVersion, toVersion, status]
+      properties:
+        fromVersion:
+          type: integer
+        toVersion:
+          type: integer
+        status:
+          type: string
+
+    TelemetryEventsRequest:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              ts:
+                type: string
+                format: date-time
+              params:
+                type: object
+
+

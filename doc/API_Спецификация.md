@@ -34,7 +34,7 @@
 - Practice: `practices/{practiceId}` (контент)
   - `type{breath|meditation|sound}`, `title`, `desc`, `durationSec`, `patternId`, `audioUrl?`, `locales{}`
 - Pattern: `patterns/{patternId}`
-  - `ownerId?` (если пользовательский), `kind{light|haptic|combo}`, `spec`, `public`, `reviewStatus`
+  - `ownerId?` (если пользовательский), `kind{light|haptic|combo}`, `spec`, `public`, `reviewStatus`, `hardwareVersion`, `title`, `description`, `tags[]`, `createdAt`, `updatedAt`
 - Rule (IFTTT): `rules/{ruleId}`
   - `ownerId`, `trigger{type, params}`, `action{type, params}`, `enabled`, `schedule?`
 - Telemetry: `telemetry/{docId}` (агрегаты/сырые события по сабколлекциям)
@@ -100,14 +100,25 @@
 - GET /v1/practices/:practiceId — Детали
   - 200: `{ practice }`
 - POST /v1/patterns — Создать пользовательский паттерн
-  - body: `{ kind, spec, title?, public? }`
+  - body: `{ kind, spec, title?, description?, tags?, public?, hardwareVersion }`
   - 201: `{ pattern }`
 - GET /v1/patterns.mine — Мои паттерны
   - 200: `{ items: Pattern[] }`
+- GET /v1/patterns — Публичные паттерны
+  - query: `hardwareVersion?`, `kind?`, `tags?`, `cursor?`, `limit?`
+  - 200: `{ items: Pattern[], nextCursor? }`
+- GET /v1/patterns/:patternId — Детали паттерна
+  - 200: `{ pattern }`
 - PATCH /v1/patterns/:patternId — Обновить
   - 200: `{ pattern }`
 - DELETE /v1/patterns/:patternId — Удалить
   - 200: `{ ok: true }`
+- POST /v1/patterns/:patternId/share — Поделиться паттерном с партнером
+  - body: `{ toUserId?, pairId? }`
+  - 200: `{ shared: boolean }`
+- POST /v1/patterns/preview — Предварительный просмотр паттерна на устройстве
+  - body: `{ deviceId, spec, duration? }`
+  - 200: `{ previewId }`
 
 ### Практики: выполнение и статистика
 - POST /v1/practices/:practiceId/start — Старт сессии
@@ -167,9 +178,39 @@
 - `pairs` (составной индекс: `memberIds` array-contains, `status`)
 - `hugs` (индексы: `fromUserId`, `toUserId`, `createdAt desc`, `inReplyToHugId`)
 - `practices` (индексы: `type`, `locales.xx.title`)
-- `patterns` (индексы: `ownerId`, `public`, `reviewStatus`)
+- `patterns` (индексы: `ownerId`, `public`, `reviewStatus`, `hardwareVersion`, `tags`)
 - `rules` (индексы: `ownerId`, `enabled`)
 - `sessions` (индексы: `ownerId`, `practiceId`, `status`, `startedAt desc`)
+
+## Структура паттернов анимаций
+
+### Спецификация паттерна (spec)
+```json
+{
+  "type": "breathing|pulse|rainbow|fire|gradient|chase|custom",
+  "hardwareVersion": 100|200,
+  "duration": 5000,
+  "loop": true,
+  "elements": [
+    {
+      "type": "color|gradient|pulse|chase",
+      "startTime": 0,
+      "duration": 2000,
+      "color": "#00FF00",
+      "colors": ["#FF0000", "#00FF00", "#0000FF"],
+      "intensity": 0.8,
+      "speed": 1.0,
+      "direction": "clockwise|counterclockwise|center|outward",
+      "leds": [0, 1, 2, 3] // для v2.0 с кольцом
+    }
+  ]
+}
+```
+
+### Команды для устройства
+- v1.0: `BREATHING:00FF00:8000ms` (тип:цвет:длительность)
+- v2.0: `GRADIENT:FF0000,00FF00,0000FF:5000ms:clockwise` (тип:цвета:длительность:направление)
+- v2.0: `CHASE:00FF00:2000ms:3` (тип:цвет:длительность:количество_светодиодов)
 
 ## Реалтайм-каналы
 - FCM пуши:

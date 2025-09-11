@@ -1,0 +1,16 @@
+openapi: 3.0.3
+info:
+  title: Amulet Public API
+  version: "1.0.0"
+  description: Публичный HTTPS API v1. Источник — `doc/openapi_v1.yaml`.
+servers:
+  - url: /
+paths:
+  /__proxy-to-doc-openapi:
+    get:
+      summary: Proxy notice
+      responses:
+        '200':
+          description: OK
+
+
