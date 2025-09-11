@@ -4,6 +4,8 @@
     "lint": "eslint --ext .js,.ts .",
     "build": "tsc",
     "build:watch": "tsc --watch",
+    "format": "prettier --write \"**/*.{ts,js,json,md,yaml,yml}\"",
+    "test": "echo \"No tests specified\" && exit 0",
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
@@ -11,7 +13,7 @@
     "logs": "firebase functions:log"
   },
   "engines": {
-    "node": "22"
+    "node": "20"
   },
   "main": "lib/index.js",
   "dependencies": {
@@ -24,7 +26,9 @@
     "eslint": "^8.9.0",
     "eslint-config-google": "^0.14.0",
     "eslint-plugin-import": "^2.25.4",
+    "eslint-config-prettier": "^9.1.0",
     "firebase-functions-test": "^3.1.0",
+    "prettier": "^3.3.3",
     "typescript": "^5.7.3"
   },
   "private": true

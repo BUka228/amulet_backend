@@ -1,0 +1,41 @@
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+    types: [opened, labeled, unlabeled, synchronize, edited, ready_for_review, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    if: github.actor == 'dependabot[bot]' || github.actor == 'dependabot'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for status checks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({ owner: context.repo.owner, repo: context.repo.repo, pull_number: context.payload.pull_request.number });
+            const required = ['CI / functions'];
+            const checkRuns = await github.rest.checks.listForRef({ owner: context.repo.owner, repo: context.repo.repo, ref: pr.data.head.sha });
+            const statuses = await github.rest.repos.getCombinedStatusForRef({ owner: context.repo.owner, repo: context.repo.repo, ref: pr.data.head.sha });
+            const successChecks = new Set(checkRuns.data.check_runs.filter(cr => cr.conclusion === 'success').map(cr => cr.name));
+            const allGreen = required.every(name => successChecks.has(name)) && statuses.data.state === 'success';
+            if (!allGreen) {
+              core.setFailed('Required checks not yet successful');
+            }
+      - name: Enable auto-merge for Dependabot PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const labels = (pr.labels || []).map(l => l.name);
+            const isSecurity = labels.includes('security') || (pr.title || '').toLowerCase().includes('[security]');
+            const isPatch = /\bpatch\b/i.test(pr.title || '') || labels.includes('semver:patch');
+            if (isSecurity || isPatch) {
+              await github.rest.pulls.merge({ owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number, merge_method: 'squash' });
+            } else {
+              core.info('Not a security or patch update; skipping auto-merge.');
+            }
