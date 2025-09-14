@@ -8,6 +8,7 @@ import { AuthContext, AuthError, AppCheckContext, AuthMiddlewareOptions } from '
 import * as logger from 'firebase-functions/logger';
 
 // Расширяем типы Express для добавления auth контекста
+// eslint-disable-next-line @typescript-eslint/no-namespace
 declare global {
   namespace Express {
     interface Request {
@@ -25,7 +26,7 @@ export const authenticateToken = (options: AuthMiddlewareOptions = {}) => {
     try {
       const authHeader = req.headers.authorization;
       
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      if (!authHeader?.startsWith('Bearer ')) {
         if (options.allowAnonymous) {
           return next();
         }
@@ -91,7 +92,7 @@ export const authenticateToken = (options: AuthMiddlewareOptions = {}) => {
           email: decodedToken.email,
           displayName: decodedToken.name,
           photoURL: decodedToken.picture,
-          emailVerified: decodedToken.email_verified || false,
+          emailVerified: decodedToken.email_verified ?? false,
           disabled: false, // decodedToken не содержит информацию о disabled
           metadata: {
             creationTime: new Date(decodedToken.iat * 1000).toISOString(),
@@ -203,7 +204,7 @@ export const requireRole = (role: string) => {
 /**
  * Middleware для проверки владения ресурсом
  */
-export const requireOwnership = (resourceOwnerField: string = 'ownerId') => {
+export const requireOwnership = (resourceOwnerField = 'ownerId') => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.auth) {
       return sendAuthError(res, {
@@ -256,7 +257,7 @@ function getHttpStatusFromAuthError(code: string): number {
  * Утилита для получения пользователя из контекста
  */
 export function getCurrentUser(req: Request): AuthContext['user'] | null {
-  return req.auth?.user || null;
+  return req.auth?.user ?? null;
 }
 
 /**

@@ -37,7 +37,9 @@ afterAll(() => {
 
 // Глобальные утилиты для тестов
 declare global {
+  // eslint-disable-next-line no-var
   var createMockUser: (overrides?: any) => any;
+  // eslint-disable-next-line no-var
   var createMockDecodedToken: (overrides?: any) => any;
 }
 

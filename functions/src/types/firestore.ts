@@ -142,11 +142,11 @@ export interface Rule extends BaseDocument {
   ownerId: string;
   trigger: {
     type: 'device_gesture' | 'calendar' | 'weather' | 'geo' | 'webhook' | 'time';
-    params: Record<string, any>;
+    params: Record<string, string | number | boolean>;
   };
   action: {
     type: 'start_practice' | 'send_hug' | 'light_device' | 'smart_home' | 'notification';
-    params: Record<string, any>;
+    params: Record<string, string | number | boolean>;
   };
   enabled: boolean;
   schedule?: {
@@ -183,7 +183,7 @@ export interface TelemetryEvent extends BaseDocument {
   deviceId?: string;
   type: string;
   timestamp: Timestamp;
-  params: Record<string, any>;
+  params: Record<string, string | number | boolean | object>;
   sessionId?: string;
   practiceId?: string;
 }
@@ -258,7 +258,7 @@ export interface AdminAction extends BaseDocument {
   action: string;
   targetType: 'user' | 'device' | 'pattern' | 'practice' | 'firmware';
   targetId: string;
-  details: Record<string, any>;
+  details: Record<string, string | number | boolean | object>;
   reason?: string;
 }
 

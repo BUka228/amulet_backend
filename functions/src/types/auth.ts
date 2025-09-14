@@ -13,7 +13,7 @@ export interface AuthUser {
     creationTime: string;
     lastSignInTime?: string;
   };
-  customClaims?: Record<string, any>;
+  customClaims?: Record<string, string | number | boolean>;
 }
 
 export interface AuthContext {
@@ -25,7 +25,7 @@ export interface AuthContext {
 export interface AuthError {
   code: 'unauthenticated' | 'permission_denied' | 'invalid_token' | 'token_expired';
   message: string;
-  details?: Record<string, any>;
+  details?: Record<string, string | number | boolean>;
 }
 
 export interface AppCheckContext {
@@ -54,8 +54,8 @@ export interface DecodedIdToken {
   name?: string;
   picture?: string;
   firebase: {
-    identities: Record<string, any>;
+    identities: Record<string, string[]>;
     sign_in_provider: string;
   };
-  [key: string]: any;
+  [key: string]: string | number | boolean | object | undefined;
 }

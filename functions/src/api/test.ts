@@ -78,15 +78,23 @@ app.get('/optional-auth',
   (req: Request, res: Response) => {
     res.json({
       message: 'This endpoint allows anonymous access',
-      user: req.auth?.user || null,
-      isAuthenticated: req.auth?.isAuthenticated || false,
+      user: req.auth?.user ?? null,
+      isAuthenticated: req.auth?.isAuthenticated ?? false,
       timestamp: new Date().toISOString()
     });
   }
 );
 
-// Обработчик ошибок
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+// 404 handler
+app.use('*', (req: Request, res: Response) => {
+  res.status(404).json({
+    code: 'not_found',
+    message: 'Endpoint not found'
+  });
+});
+
+// Обработчик ошибок (должен быть последним)
+app.use((err: Error, req: express.Request, res: express.Response) => {
   logger.error('Unhandled error', {
     error: err.message,
     stack: err.stack,
@@ -96,14 +104,6 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   res.status(500).json({
     code: 'internal',
     message: 'Internal server error'
-  });
-});
-
-// 404 handler
-app.use('*', (req: Request, res: Response) => {
-  res.status(404).json({
-    code: 'not_found',
-    message: 'Endpoint not found'
   });
 });
 

@@ -5,7 +5,7 @@
 import { Timestamp } from './firestore';
 
 // Базовые типы ответов
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   data?: T;
   error?: ApiError;
   meta?: {
@@ -18,7 +18,7 @@ export interface ApiResponse<T = any> {
 export interface ApiError {
   code: string;
   message: string;
-  details?: Record<string, any>;
+  details?: Record<string, string | number | boolean>;
   field?: string;
 }
 
@@ -128,7 +128,7 @@ export interface SendHugRequest {
   };
   payload?: {
     message?: string;
-    customPattern?: any;
+    customPattern?: object;
   };
 }
 
@@ -170,7 +170,7 @@ export interface GetPracticesRequest {
 // Типы для паттернов
 export interface CreatePatternRequest {
   kind: 'light' | 'haptic' | 'combo';
-  spec: any;
+  spec: object;
   title?: string;
   description?: string;
   tags?: string[];
@@ -183,7 +183,7 @@ export interface UpdatePatternRequest {
   description?: string;
   tags?: string[];
   public?: boolean;
-  spec?: any;
+  spec?: object;
 }
 
 export interface SharePatternRequest {
@@ -193,7 +193,7 @@ export interface SharePatternRequest {
 
 export interface PreviewPatternRequest {
   deviceId: string;
-  spec: any;
+  spec: object;
   duration?: number;
 }
 
@@ -236,11 +236,11 @@ export interface GetStatsRequest {
 export interface CreateRuleRequest {
   trigger: {
     type: 'device_gesture' | 'calendar' | 'weather' | 'geo' | 'webhook' | 'time';
-    params: Record<string, any>;
+    params: Record<string, string | number | boolean>;
   };
   action: {
     type: 'start_practice' | 'send_hug' | 'light_device' | 'smart_home' | 'notification';
-    params: Record<string, any>;
+    params: Record<string, string | number | boolean>;
   };
   schedule?: {
     timezone: string;
@@ -292,7 +292,7 @@ export interface ReportFirmwareRequest {
 export interface TelemetryEvent {
   type: string;
   ts: number;
-  params: Record<string, any>;
+  params: Record<string, string | number | boolean | object>;
 }
 
 export interface SendTelemetryRequest {
@@ -312,7 +312,7 @@ export interface SendTelemetryResponse {
 export interface WebhookRequest {
   integrationKey: string;
   signature: string;
-  payload: any;
+  payload: object;
   timestamp: number;
 }
 
@@ -379,7 +379,7 @@ export interface RateLimitInfo {
 // Типы для идемпотентности
 export interface IdempotencyResponse {
   key: string;
-  response: any;
+  response: object;
   createdAt: Timestamp;
   expiresAt: Timestamp;
 }
@@ -389,7 +389,7 @@ export interface ValidationError {
   field: string;
   code: string;
   message: string;
-  value?: any;
+  value?: string | number | boolean | object;
 }
 
 export interface ValidationResult {
