@@ -15,9 +15,9 @@ import {
 import { Request, Response, NextFunction } from 'express';
 
 // Мок для Firebase Admin
-const mockVerifyIdToken = jest.fn();
-const mockGetUser = jest.fn();
-const mockAppCheck = jest.fn();
+const mockVerifyIdToken = jest.fn() as jest.MockedFunction<any>;
+const mockGetUser = jest.fn() as jest.MockedFunction<any>;
+const mockAppCheck = jest.fn() as jest.MockedFunction<any>;
 
 jest.mock('firebase-admin', () => ({
   auth: jest.fn(() => ({
@@ -44,8 +44,8 @@ describe('Auth Middleware Unit Tests', () => {
     };
     
     mockResponse = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn().mockReturnThis()
+      status: jest.fn().mockReturnThis() as any,
+      json: jest.fn().mockReturnThis() as any
     };
     
     mockNext = jest.fn();
@@ -129,7 +129,7 @@ describe('Auth Middleware Unit Tests', () => {
         token: 'valid-token'
       };
 
-      mockAppCheck.mockResolvedValue(mockAppCheckClaims);
+      mockAppCheck.mockResolvedValue(mockAppCheckClaims as any);
       mockRequest.headers = { 'x-firebase-app-check': 'valid-token' };
       
       await verifyAppCheck(mockRequest as Request, mockResponse as Response, mockNext);
@@ -364,7 +364,7 @@ describe('Auth Middleware Unit Tests', () => {
       ];
 
       for (const { error, expectedCode } of errorCases) {
-        mockVerifyIdToken.mockRejectedValueOnce(error);
+        mockVerifyIdToken.mockRejectedValueOnce(error as any);
         mockRequest.headers = { authorization: 'Bearer test-token' };
 
         const middleware = authenticateToken();

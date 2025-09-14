@@ -4,7 +4,7 @@
 
 import { onRequest } from 'firebase-functions/https';
 import express, { Request, Response, NextFunction } from 'express';
-import { authenticateToken, verifyAppCheck, requireRole } from '../core/auth';
+import { authenticateToken, verifyAppCheck } from '../core/auth';
 import * as logger from 'firebase-functions/logger';
 
 const app = express();
@@ -109,3 +109,6 @@ app.use('*', (req: Request, res: Response) => {
 
 // Экспорт Cloud Function
 export const api = onRequest(app);
+
+// Экспортируем app для тестов
+export { app };

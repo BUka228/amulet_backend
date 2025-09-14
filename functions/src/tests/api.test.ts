@@ -4,12 +4,12 @@
 
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import request from 'supertest';
-import { api } from '../api/test';
+import { app } from '../api/test';
 
 // Мок для Firebase Admin
-const mockVerifyIdToken = jest.fn();
-const mockGetUser = jest.fn();
-const mockAppCheck = jest.fn();
+const mockVerifyIdToken = jest.fn() as jest.MockedFunction<any>;
+const mockGetUser = jest.fn() as jest.MockedFunction<any>;
+const mockAppCheck = jest.fn() as jest.MockedFunction<any>;
 
 jest.mock('firebase-admin', () => ({
   auth: jest.fn(() => ({
@@ -28,7 +28,7 @@ describe('API Endpoints Tests', () => {
 
   describe('Публичные endpoints', () => {
     test('GET /public должен возвращать публичный контент', async () => {
-      const response = await request(api)
+      const response = await request(app)
         .get('/public')
         .expect(200);
 
@@ -66,13 +66,13 @@ describe('API Endpoints Tests', () => {
     });
 
     test('GET /protected должен требовать аутентификации', async () => {
-      await request(api)
+      await request(app)
         .get('/protected')
         .expect(401);
     });
 
     test('GET /protected должен работать с валидным токеном', async () => {
-      const response = await request(api)
+      const response = await request(app)
         .get('/protected')
         .set('Authorization', 'Bearer valid-token')
         .expect(200);
@@ -83,7 +83,7 @@ describe('API Endpoints Tests', () => {
     });
 
     test('GET /app-check должен требовать App Check токен', async () => {
-      await request(api)
+      await request(app)
         .get('/app-check')
         .expect(401);
     });
@@ -94,9 +94,9 @@ describe('API Endpoints Tests', () => {
         token: 'valid-app-check-token'
       };
 
-      mockAppCheck.mockResolvedValue(mockAppCheckClaims);
+      mockAppCheck.mockResolvedValue(mockAppCheckClaims as any);
 
-      const response = await request(api)
+      const response = await request(app)
         .get('/app-check')
         .set('x-firebase-app-check', 'valid-app-check-token')
         .expect(200);
@@ -116,16 +116,16 @@ describe('API Endpoints Tests', () => {
         auth_time: Math.floor(Date.now() / 1000)
       };
 
-      mockVerifyIdToken.mockResolvedValueOnce(mockDecodedToken);
+      mockVerifyIdToken.mockResolvedValueOnce(mockDecodedToken as any);
 
-      await request(api)
+      await request(app)
         .get('/verified')
         .set('Authorization', 'Bearer valid-token')
         .expect(403);
     });
 
     test('GET /verified должен работать с подтвержденным email', async () => {
-      const response = await request(api)
+      const response = await request(app)
         .get('/verified')
         .set('Authorization', 'Bearer valid-token')
         .expect(200);
@@ -135,7 +135,7 @@ describe('API Endpoints Tests', () => {
     });
 
     test('GET /admin должен требовать роль admin', async () => {
-      await request(api)
+      await request(app)
         .get('/admin')
         .set('Authorization', 'Bearer valid-token')
         .expect(403);
@@ -154,7 +154,7 @@ describe('API Endpoints Tests', () => {
 
       mockGetUser.mockResolvedValueOnce(mockUser as any);
 
-      const response = await request(api)
+      const response = await request(app)
         .get('/admin')
         .set('Authorization', 'Bearer valid-token')
         .expect(200);
@@ -164,7 +164,7 @@ describe('API Endpoints Tests', () => {
     });
 
     test('GET /optional-auth должен работать без аутентификации', async () => {
-      const response = await request(api)
+      const response = await request(app)
         .get('/optional-auth')
         .expect(200);
 
@@ -174,7 +174,7 @@ describe('API Endpoints Tests', () => {
     });
 
     test('GET /optional-auth должен работать с аутентификацией', async () => {
-      const response = await request(api)
+      const response = await request(app)
         .get('/optional-auth')
         .set('Authorization', 'Bearer valid-token')
         .expect(200);
@@ -187,7 +187,7 @@ describe('API Endpoints Tests', () => {
 
   describe('Обработка ошибок', () => {
     test('должен возвращать 404 для несуществующих endpoints', async () => {
-      const response = await request(api)
+      const response = await request(app)
         .get('/nonexistent')
         .expect(404);
 
@@ -196,9 +196,9 @@ describe('API Endpoints Tests', () => {
     });
 
     test('должен обрабатывать ошибки аутентификации', async () => {
-      mockVerifyIdToken.mockRejectedValueOnce(new Error('Invalid token'));
+      mockVerifyIdToken.mockRejectedValueOnce(new Error('Invalid token') as any);
 
-      const response = await request(api)
+      const response = await request(app)
         .get('/protected')
         .set('Authorization', 'Bearer invalid-token')
         .expect(401);
@@ -207,9 +207,9 @@ describe('API Endpoints Tests', () => {
     });
 
     test('должен обрабатывать истекшие токены', async () => {
-      mockVerifyIdToken.mockRejectedValueOnce(new Error('Token expired'));
+      mockVerifyIdToken.mockRejectedValueOnce(new Error('Token expired') as any);
 
-      const response = await request(api)
+      const response = await request(app)
         .get('/protected')
         .set('Authorization', 'Bearer expired-token')
         .expect(401);
@@ -222,7 +222,7 @@ describe('API Endpoints Tests', () => {
     test('должен логировать запросы', async () => {
       // Тест проверяет, что запрос проходит без ошибок
       // Логирование проверяется через firebase-functions/logger
-      const response = await request(api)
+      const response = await request(app)
         .get('/public')
         .expect(200);
 
@@ -232,7 +232,7 @@ describe('API Endpoints Tests', () => {
 
   describe('Middleware цепочка', () => {
     test('должен применять все middleware в правильном порядке', async () => {
-      const response = await request(api)
+      const response = await request(app)
         .get('/protected')
         .set('Authorization', 'Bearer valid-token')
         .expect(200);
@@ -243,9 +243,9 @@ describe('API Endpoints Tests', () => {
     });
 
     test('должен останавливать выполнение при ошибке аутентификации', async () => {
-      mockVerifyIdToken.mockRejectedValueOnce(new Error('Auth failed'));
+      mockVerifyIdToken.mockRejectedValueOnce(new Error('Auth failed') as any);
 
-      await request(api)
+      await request(app)
         .get('/protected')
         .set('Authorization', 'Bearer invalid-token')
         .expect(401);

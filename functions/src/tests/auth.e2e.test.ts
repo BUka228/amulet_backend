@@ -24,9 +24,9 @@ const mockResponse = (): Partial<Response> => {
 const mockNext = (): NextFunction => jest.fn();
 
 // Мок для Firebase Admin
-const mockVerifyIdToken = jest.fn();
-const mockGetUser = jest.fn();
-const mockAppCheck = jest.fn();
+const mockVerifyIdToken = jest.fn() as jest.MockedFunction<any>;
+const mockGetUser = jest.fn() as jest.MockedFunction<any>;
+const mockAppCheck = jest.fn() as jest.MockedFunction<any>;
 
 jest.mock('firebase-admin', () => ({
   auth: jest.fn(() => ({
@@ -66,8 +66,8 @@ describe('Auth Middleware E2E Tests', () => {
         auth_time: Math.floor(Date.now() / 1000)
       };
 
-      mockVerifyIdToken.mockResolvedValue(mockDecodedToken);
-      mockGetUser.mockResolvedValue(mockUser);
+      mockVerifyIdToken.mockResolvedValue(mockDecodedToken as any);
+      mockGetUser.mockResolvedValue(mockUser as any);
 
       const req = mockRequest({
         'authorization': 'Bearer valid-token'
@@ -102,7 +102,7 @@ describe('Auth Middleware E2E Tests', () => {
     });
 
     test('должен вернуть 401 при невалидном токене', async () => {
-      mockVerifyIdToken.mockRejectedValue(new Error('Invalid token'));
+      mockVerifyIdToken.mockRejectedValue(new Error('Invalid token') as any);
 
       const req = mockRequest({
         'authorization': 'Bearer invalid-token'
@@ -122,7 +122,7 @@ describe('Auth Middleware E2E Tests', () => {
     });
 
     test('должен вернуть 401 при истекшем токене', async () => {
-      mockVerifyIdToken.mockRejectedValue(new Error('Token expired'));
+      mockVerifyIdToken.mockRejectedValue(new Error('Token expired') as any);
 
       const req = mockRequest({
         'authorization': 'Bearer expired-token'
@@ -159,8 +159,8 @@ describe('Auth Middleware E2E Tests', () => {
         email_verified: false
       };
 
-      mockVerifyIdToken.mockResolvedValue(mockDecodedToken);
-      mockGetUser.mockResolvedValue(mockUser);
+      mockVerifyIdToken.mockResolvedValue(mockDecodedToken as any);
+      mockGetUser.mockResolvedValue(mockUser as any);
 
       const req = mockRequest({
         'authorization': 'Bearer valid-token'
@@ -199,8 +199,8 @@ describe('Auth Middleware E2E Tests', () => {
         auth_time: Math.floor(Date.now() / 1000)
       };
 
-      mockVerifyIdToken.mockResolvedValue(mockDecodedToken);
-      mockGetUser.mockResolvedValue(mockUser);
+      mockVerifyIdToken.mockResolvedValue(mockDecodedToken as any);
+      mockGetUser.mockResolvedValue(mockUser as any);
 
       const req = mockRequest({
         'authorization': 'Bearer valid-token'
@@ -240,7 +240,7 @@ describe('Auth Middleware E2E Tests', () => {
         token: 'valid-app-check-token'
       };
 
-      mockAppCheck.mockResolvedValue(mockAppCheckClaims);
+      mockAppCheck.mockResolvedValue(mockAppCheckClaims as any);
 
       const req = mockRequest({
         'x-firebase-app-check': 'valid-app-check-token'
@@ -273,7 +273,7 @@ describe('Auth Middleware E2E Tests', () => {
     });
 
     test('должен вернуть 401 при невалидном App Check токене', async () => {
-      mockAppCheck.mockRejectedValue(new Error('Invalid App Check token'));
+      mockAppCheck.mockRejectedValue(new Error('Invalid App Check token') as any);
 
       const req = mockRequest({
         'x-firebase-app-check': 'invalid-app-check-token'
@@ -376,8 +376,8 @@ describe('Auth Middleware E2E Tests', () => {
         auth_time: Math.floor(Date.now() / 1000)
       };
 
-      mockVerifyIdToken.mockResolvedValue(mockDecodedToken);
-      mockGetUser.mockResolvedValue(mockUser);
+      mockVerifyIdToken.mockResolvedValue(mockDecodedToken as any);
+      mockGetUser.mockResolvedValue(mockUser as any);
 
       // Тест 1: Аутентификация с custom claims
       const req1 = mockRequest({
@@ -426,7 +426,7 @@ describe('Auth Middleware E2E Tests', () => {
       ];
 
       for (const { error, expectedCode } of errorCases) {
-        mockVerifyIdToken.mockRejectedValueOnce(error);
+        mockVerifyIdToken.mockRejectedValueOnce(error as any);
 
         const req = mockRequest({
           'authorization': 'Bearer test-token'
