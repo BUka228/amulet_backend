@@ -17,11 +17,15 @@ import { Request, Response, NextFunction } from 'express';
 // Мок для Firebase Admin
 const mockVerifyIdToken = jest.fn();
 const mockGetUser = jest.fn();
+const mockAppCheck = jest.fn();
 
 jest.mock('firebase-admin', () => ({
   auth: jest.fn(() => ({
     verifyIdToken: mockVerifyIdToken,
     getUser: mockGetUser
+  })),
+  appCheck: jest.fn(() => ({
+    verifyToken: mockAppCheck
   }))
 }));
 
@@ -120,12 +124,20 @@ describe('Auth Middleware Unit Tests', () => {
     });
 
     test('должен обрабатывать валидный App Check токен', async () => {
+      const mockAppCheckClaims = {
+        appId: 'test-app-id',
+        token: 'valid-token'
+      };
+
+      mockAppCheck.mockResolvedValue(mockAppCheckClaims);
       mockRequest.headers = { 'x-firebase-app-check': 'valid-token' };
       
       await verifyAppCheck(mockRequest as Request, mockResponse as Response, mockNext);
 
+      expect(mockAppCheck).toHaveBeenCalledWith('valid-token');
       expect(mockRequest.appCheck).toBeDefined();
       expect(mockRequest.appCheck?.isVerified).toBe(true);
+      expect(mockRequest.appCheck?.appId).toBe('test-app-id');
       expect(mockNext).toHaveBeenCalled();
     });
   });

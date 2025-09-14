@@ -9,11 +9,15 @@ import { api } from '../api/test';
 // Мок для Firebase Admin
 const mockVerifyIdToken = jest.fn();
 const mockGetUser = jest.fn();
+const mockAppCheck = jest.fn();
 
 jest.mock('firebase-admin', () => ({
   auth: jest.fn(() => ({
     verifyIdToken: mockVerifyIdToken,
     getUser: mockGetUser
+  })),
+  appCheck: jest.fn(() => ({
+    verifyToken: mockAppCheck
   }))
 }));
 
@@ -52,7 +56,9 @@ describe('API Endpoints Tests', () => {
       const mockDecodedToken = {
         uid: 'test-uid',
         email: 'test@example.com',
-        email_verified: true
+        email_verified: true,
+        iat: Math.floor(Date.now() / 1000),
+        auth_time: Math.floor(Date.now() / 1000)
       };
 
       mockVerifyIdToken.mockResolvedValue(mockDecodedToken as any);
@@ -83,27 +89,34 @@ describe('API Endpoints Tests', () => {
     });
 
     test('GET /app-check должен работать с App Check токеном', async () => {
+      const mockAppCheckClaims = {
+        appId: 'test-app-id',
+        token: 'valid-app-check-token'
+      };
+
+      mockAppCheck.mockResolvedValue(mockAppCheckClaims);
+
       const response = await request(api)
         .get('/app-check')
         .set('x-firebase-app-check', 'valid-app-check-token')
         .expect(200);
 
+      expect(mockAppCheck).toHaveBeenCalledWith('valid-app-check-token');
       expect(response.body).toHaveProperty('message', 'This endpoint requires App Check');
       expect(response.body).toHaveProperty('appCheck');
     });
 
     test('GET /verified должен требовать подтвержденный email', async () => {
       // Мок для пользователя с неподтвержденным email
-      const mockUser = {
+      const mockDecodedToken = {
         uid: 'test-uid',
         email: 'test@example.com',
-        emailVerified: false,
-        disabled: false,
-        metadata: { creationTime: '2023-01-01T00:00:00Z' },
-        customClaims: {}
+        email_verified: false,
+        iat: Math.floor(Date.now() / 1000),
+        auth_time: Math.floor(Date.now() / 1000)
       };
 
-      mockGetUser.mockResolvedValueOnce(mockUser as any);
+      mockVerifyIdToken.mockResolvedValueOnce(mockDecodedToken);
 
       await request(api)
         .get('/verified')

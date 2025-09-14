@@ -50,8 +50,7 @@ app.get('/app-check', verifyAppCheck, (req: Request, res: Response) => {
 
 // Endpoint с проверкой роли
 app.get('/admin', 
-  authenticateToken({ requireCustomClaim: 'admin' }), 
-  requireRole('admin'),
+  authenticateToken({ requireCustomClaim: 'admin' }),
   (req: Request, res: Response) => {
     res.json({
       message: 'This is an admin-only endpoint',

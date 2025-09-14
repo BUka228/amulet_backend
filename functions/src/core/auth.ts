@@ -47,26 +47,29 @@ export const authenticateToken = (options: AuthMiddlewareOptions = {}) => {
       // Верификация ID Token
       const decodedToken = await admin.auth().verifyIdToken(idToken, true);
       
-      // Получение полной информации о пользователе
-      const userRecord = await admin.auth().getUser(decodedToken.uid);
-      
-      // Проверка дополнительных требований
-      if (options.requireEmailVerified && !userRecord.emailVerified) {
+      // Проверка дополнительных требований на основе decodedToken (быстрее)
+      if (options.requireEmailVerified && !decodedToken.email_verified) {
         return sendAuthError(res, {
           code: 'permission_denied',
           message: 'Email verification required'
         });
       }
 
-      if (options.requireCustomClaim && !userRecord.customClaims?.[options.requireCustomClaim]) {
-        return sendAuthError(res, {
-          code: 'permission_denied',
-          message: `Custom claim '${options.requireCustomClaim}' required`
-        });
+      // Для custom claims нужно получить актуальную информацию
+      let userRecord = null;
+      if (options.requireCustomClaim) {
+        userRecord = await admin.auth().getUser(decodedToken.uid);
+        if (!userRecord.customClaims?.[options.requireCustomClaim]) {
+          return sendAuthError(res, {
+            code: 'permission_denied',
+            message: `Custom claim '${options.requireCustomClaim}' required`
+          });
+        }
       }
 
       // Создание контекста аутентификации
-      const authContext: AuthContext = {
+      // Если userRecord уже получен, используем его, иначе создаем из decodedToken
+      const authContext: AuthContext = userRecord ? {
         user: {
           uid: userRecord.uid,
           email: userRecord.email,
@@ -82,13 +85,29 @@ export const authenticateToken = (options: AuthMiddlewareOptions = {}) => {
         },
         token: idToken,
         isAuthenticated: true
+      } : {
+        user: {
+          uid: decodedToken.uid,
+          email: decodedToken.email,
+          displayName: decodedToken.name,
+          photoURL: decodedToken.picture,
+          emailVerified: decodedToken.email_verified || false,
+          disabled: false, // decodedToken не содержит информацию о disabled
+          metadata: {
+            creationTime: new Date(decodedToken.iat * 1000).toISOString(),
+            lastSignInTime: decodedToken.auth_time ? new Date(decodedToken.auth_time * 1000).toISOString() : undefined
+          },
+          customClaims: {} // decodedToken не содержит актуальные custom claims
+        },
+        token: idToken,
+        isAuthenticated: true
       };
 
       req.auth = authContext;
       
       logger.info('User authenticated', {
-        uid: userRecord.uid,
-        email: userRecord.email,
+        uid: authContext.user.uid,
+        email: authContext.user.email,
         requestId: req.headers['x-request-id']
       });
 
@@ -125,7 +144,7 @@ export const authenticateToken = (options: AuthMiddlewareOptions = {}) => {
 /**
  * Middleware для проверки App Check токена
  */
-export const verifyAppCheck = (req: Request, res: Response, next: NextFunction) => {
+export const verifyAppCheck = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const appCheckToken = req.headers['x-firebase-app-check'] as string;
     
@@ -136,10 +155,11 @@ export const verifyAppCheck = (req: Request, res: Response, next: NextFunction) 
       });
     }
 
-    // В реальном приложении здесь должна быть проверка App Check токена
-    // Для демонстрации просто создаем контекст
+    // Реальная проверка App Check токена через Firebase Admin SDK
+    const appCheckClaims = await admin.appCheck().verifyToken(appCheckToken);
+    
     const appCheckContext: AppCheckContext = {
-      appId: 'default-app',
+      appId: appCheckClaims.appId,
       token: appCheckToken,
       isVerified: true
     };
@@ -147,7 +167,7 @@ export const verifyAppCheck = (req: Request, res: Response, next: NextFunction) 
     req.appCheck = appCheckContext;
     
     logger.info('App Check verified', {
-      appId: appCheckContext.appId,
+      appId: appCheckClaims.appId,
       requestId: req.headers['x-request-id']
     });
 

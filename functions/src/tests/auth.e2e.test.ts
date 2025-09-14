@@ -2,8 +2,7 @@
  * E2E тесты для middleware аутентификации
  */
 
-import * as admin from 'firebase-admin';
-import { describe, beforeAll, beforeEach, test, expect, jest } from '@jest/globals';
+import { describe, beforeEach, test, expect, jest } from '@jest/globals';
 import { authenticateToken, verifyAppCheck, requireRole } from '../core/auth';
 import { Request, Response, NextFunction } from 'express';
 
@@ -16,8 +15,8 @@ const mockRequest = (headers: Record<string, string> = {}): Partial<Request> => 
 
 const mockResponse = (): Partial<Response> => {
   const res: Partial<Response> = {
-    status: jest.fn().mockReturnThis(),
-    json: jest.fn().mockReturnThis()
+    status: jest.fn().mockReturnThis() as any,
+    json: jest.fn().mockReturnThis() as any
   };
   return res;
 };
@@ -27,11 +26,15 @@ const mockNext = (): NextFunction => jest.fn();
 // Мок для Firebase Admin
 const mockVerifyIdToken = jest.fn();
 const mockGetUser = jest.fn();
+const mockAppCheck = jest.fn();
 
 jest.mock('firebase-admin', () => ({
   auth: jest.fn(() => ({
     verifyIdToken: mockVerifyIdToken,
     getUser: mockGetUser
+  })),
+  appCheck: jest.fn(() => ({
+    verifyToken: mockAppCheck
   }))
 }));
 
@@ -58,11 +61,13 @@ describe('Auth Middleware E2E Tests', () => {
       const mockDecodedToken = {
         uid: 'test-uid',
         email: 'test@example.com',
-        email_verified: true
+        email_verified: true,
+        iat: Math.floor(Date.now() / 1000),
+        auth_time: Math.floor(Date.now() / 1000)
       };
 
-      mockVerifyIdToken.mockResolvedValue(mockDecodedToken as any);
-      mockGetUser.mockResolvedValue(mockUser as any);
+      mockVerifyIdToken.mockResolvedValue(mockDecodedToken);
+      mockGetUser.mockResolvedValue(mockUser);
 
       const req = mockRequest({
         'authorization': 'Bearer valid-token'
@@ -74,7 +79,6 @@ describe('Auth Middleware E2E Tests', () => {
       await middleware(req, res, next);
 
       expect(mockVerifyIdToken).toHaveBeenCalledWith('valid-token', true);
-      expect(mockGetUser).toHaveBeenCalledWith('test-uid');
       expect(req.auth).toBeDefined();
       expect(req.auth?.user.uid).toBe('test-uid');
       expect(req.auth?.isAuthenticated).toBe(true);
@@ -155,8 +159,8 @@ describe('Auth Middleware E2E Tests', () => {
         email_verified: false
       };
 
-      mockVerifyIdToken.mockResolvedValue(mockDecodedToken as any);
-      mockGetUser.mockResolvedValue(mockUser as any);
+      mockVerifyIdToken.mockResolvedValue(mockDecodedToken);
+      mockGetUser.mockResolvedValue(mockUser);
 
       const req = mockRequest({
         'authorization': 'Bearer valid-token'
@@ -190,11 +194,13 @@ describe('Auth Middleware E2E Tests', () => {
       const mockDecodedToken = {
         uid: 'test-uid',
         email: 'test@example.com',
-        email_verified: true
+        email_verified: true,
+        iat: Math.floor(Date.now() / 1000),
+        auth_time: Math.floor(Date.now() / 1000)
       };
 
-      mockVerifyIdToken.mockResolvedValue(mockDecodedToken as any);
-      mockGetUser.mockResolvedValue(mockUser as any);
+      mockVerifyIdToken.mockResolvedValue(mockDecodedToken);
+      mockGetUser.mockResolvedValue(mockUser);
 
       const req = mockRequest({
         'authorization': 'Bearer valid-token'
@@ -205,6 +211,7 @@ describe('Auth Middleware E2E Tests', () => {
       const middleware = authenticateToken({ requireCustomClaim: 'admin' });
       await middleware(req, res, next);
 
+      expect(mockGetUser).toHaveBeenCalledWith('test-uid');
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json).toHaveBeenCalledWith({
         code: 'permission_denied',
@@ -228,6 +235,13 @@ describe('Auth Middleware E2E Tests', () => {
 
   describe('verifyAppCheck', () => {
     test('должен успешно верифицировать App Check токен', async () => {
+      const mockAppCheckClaims = {
+        appId: 'test-app-id',
+        token: 'valid-app-check-token'
+      };
+
+      mockAppCheck.mockResolvedValue(mockAppCheckClaims);
+
       const req = mockRequest({
         'x-firebase-app-check': 'valid-app-check-token'
       }) as Request;
@@ -236,8 +250,10 @@ describe('Auth Middleware E2E Tests', () => {
 
       await verifyAppCheck(req, res, next);
 
+      expect(mockAppCheck).toHaveBeenCalledWith('valid-app-check-token');
       expect(req.appCheck).toBeDefined();
       expect(req.appCheck?.isVerified).toBe(true);
+      expect(req.appCheck?.appId).toBe('test-app-id');
       expect(next).toHaveBeenCalled();
     });
 
@@ -252,6 +268,25 @@ describe('Auth Middleware E2E Tests', () => {
       expect(res.json).toHaveBeenCalledWith({
         code: 'unauthenticated',
         message: 'App Check token required'
+      });
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    test('должен вернуть 401 при невалидном App Check токене', async () => {
+      mockAppCheck.mockRejectedValue(new Error('Invalid App Check token'));
+
+      const req = mockRequest({
+        'x-firebase-app-check': 'invalid-app-check-token'
+      }) as Request;
+      const res = mockResponse() as Response;
+      const next = mockNext();
+
+      await verifyAppCheck(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        code: 'unauthenticated',
+        message: 'App Check verification failed'
       });
       expect(next).not.toHaveBeenCalled();
     });
@@ -336,22 +371,25 @@ describe('Auth Middleware E2E Tests', () => {
       const mockDecodedToken = {
         uid: 'integration-test-uid',
         email: 'integration@example.com',
-        email_verified: true
+        email_verified: true,
+        iat: Math.floor(Date.now() / 1000),
+        auth_time: Math.floor(Date.now() / 1000)
       };
 
-      mockVerifyIdToken.mockResolvedValue(mockDecodedToken as any);
-      mockGetUser.mockResolvedValue(mockUser as any);
+      mockVerifyIdToken.mockResolvedValue(mockDecodedToken);
+      mockGetUser.mockResolvedValue(mockUser);
 
-      // Тест 1: Аутентификация
+      // Тест 1: Аутентификация с custom claims
       const req1 = mockRequest({
         'authorization': 'Bearer integration-token'
       }) as Request;
       const res1 = mockResponse() as Response;
       const next1 = mockNext();
 
-      const authMiddleware = authenticateToken();
+      const authMiddleware = authenticateToken({ requireCustomClaim: 'admin' });
       await authMiddleware(req1, res1, next1);
 
+      expect(mockGetUser).toHaveBeenCalledWith('integration-test-uid');
       expect(req1.auth?.user.uid).toBe('integration-test-uid');
       expect(req1.auth?.isAuthenticated).toBe(true);
       expect(next1).toHaveBeenCalled();
