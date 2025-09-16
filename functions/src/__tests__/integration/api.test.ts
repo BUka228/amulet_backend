@@ -4,7 +4,7 @@
 
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import request from 'supertest';
-import { app } from '../api/test';
+import { app } from '../../api/test';
 
 // Мок для Firebase Admin
 const mockVerifyIdToken = jest.fn() as jest.MockedFunction<any>;

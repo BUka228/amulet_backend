@@ -3,7 +3,7 @@
  */
 
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
-import { authenticateToken, verifyAppCheck, requireRole } from '../core/auth';
+import { authenticateToken, verifyAppCheck, requireRole } from '../../core/auth';
 
 // Мок для Firebase Admin
 jest.mock('firebase-admin', () => ({

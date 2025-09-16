@@ -11,7 +11,7 @@ import {
   getCurrentUser,
   hasRole,
   isOwner
-} from '../core/auth';
+} from '../../core/auth';
 import { Request, Response, NextFunction } from 'express';
 
 // Мок для Firebase Admin

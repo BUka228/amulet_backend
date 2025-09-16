@@ -16,11 +16,11 @@ module.exports = {
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
-    '!src/tests/**/*.ts'
+    '!src/__tests__/**/*.ts'
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
-  setupFilesAfterEnv: ['<rootDir>/src/tests/setup.ts'],
+  setupFilesAfterEnv: ['<rootDir>/src/__tests__/support/setup.ts'],
   testTimeout: 30000,
   maxWorkers: 1
   // Без globalSetup и globalTeardown для юнит-тестов

@@ -8,7 +8,7 @@ import {
   Device,
   Practice,
   Pattern
-} from '../types/firestore';
+} from '../../types/firestore';
 
 // Инициализация Firebase Admin SDK для тестов
 let db: admin.firestore.Firestore;

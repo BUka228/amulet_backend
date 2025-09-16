@@ -16,13 +16,13 @@ module.exports = {
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
-    '!src/tests/**/*.ts'
+    '!src/__tests__/**/*.ts'
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
-  setupFilesAfterEnv: ['<rootDir>/src/tests/setup.ts'],
+  setupFilesAfterEnv: ['<rootDir>/src/__tests__/support/setup.ts'],
   testTimeout: 30000,
   maxWorkers: 1, // Ограничиваем количество воркеров для эмуляторов
-  globalSetup: '<rootDir>/src/tests/global-setup.ts',
-  globalTeardown: '<rootDir>/src/tests/global-teardown.ts'
+  globalSetup: '<rootDir>/src/__tests__/support/global-setup.ts',
+  globalTeardown: '<rootDir>/src/__tests__/support/global-teardown.ts'
 };

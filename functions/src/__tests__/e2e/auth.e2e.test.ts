@@ -3,7 +3,7 @@
  */
 
 import { describe, beforeEach, test, expect, jest } from '@jest/globals';
-import { authenticateToken, verifyAppCheck, requireRole } from '../core/auth';
+import { authenticateToken, verifyAppCheck, requireRole } from '../../core/auth';
 import { Request, Response, NextFunction } from 'express';
 
 // Мок для Express

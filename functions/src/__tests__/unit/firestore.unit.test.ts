@@ -20,7 +20,7 @@ import {
   AdminAction,
   Timestamp,
   BaseDocument
-} from '../types/firestore';
+} from '../../types/firestore';
 
 describe('Firestore Types', () => {
   const mockTimestamp: Timestamp = {
