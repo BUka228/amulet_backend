@@ -3,6 +3,7 @@
  */
 
 import * as admin from 'firebase-admin';
+import { seedAll } from '../../scripts/seed';
 
 // Инициализация Firebase Admin SDK для тестов
 let db: admin.firestore.Firestore;
@@ -21,6 +22,24 @@ beforeAll(async () => {
     host: 'localhost:8080',
     ssl: false
   });
+
+  // Очищаем коллекции перед засеиванием, чтобы избежать конфликтов со старыми данными
+  const clearCollection = async (name: string) => {
+    const snap = await db.collection(name).get();
+    const batch = db.batch();
+    snap.docs.forEach(doc => batch.delete(doc.ref));
+    if (!snap.empty) {
+      await batch.commit();
+    }
+  };
+  await Promise.all([
+    clearCollection('practices'),
+    clearCollection('patterns'),
+    clearCollection('firmware')
+  ]);
+
+  // Засеиваем тестовые данные (паттерны -> практики с привязкой -> прошивки)
+  await seedAll();
 });
 
 describe('Seed Script Tests', () => {

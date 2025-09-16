@@ -124,9 +124,11 @@ const patterns: Omit<Pattern, 'id' | 'createdAt' | 'updatedAt'>[] = [
           type: 'pulse',
           startTime: 0,
           duration: 5000,
-          color: '#00FF00',
-          intensity: 0.8,
-          speed: 1.0
+          params: {
+            color: '#00FF00',
+            intensity: 0.8,
+            speed: 1.0
+          }
         }
       ]
     } as PatternSpec,
@@ -151,10 +153,12 @@ const patterns: Omit<Pattern, 'id' | 'createdAt' | 'updatedAt'>[] = [
           type: 'pulse',
           startTime: 0,
           duration: 5000,
-          color: '#00FF00',
-          intensity: 0.8,
-          speed: 1.0,
-          direction: 'center'
+          params: {
+            color: '#00FF00',
+            intensity: 0.8,
+            speed: 1.0,
+            direction: 'center'
+          }
         }
       ]
     } as PatternSpec,
@@ -179,10 +183,12 @@ const patterns: Omit<Pattern, 'id' | 'createdAt' | 'updatedAt'>[] = [
           type: 'gradient',
           startTime: 0,
           duration: 8000,
-          colors: ['#FF0000', '#FF8000', '#FFFF00', '#00FF00', '#0080FF', '#8000FF'],
-          intensity: 0.9,
-          speed: 0.5,
-          direction: 'clockwise'
+          params: {
+            colors: ['#FF0000', '#FF8000', '#FFFF00', '#00FF00', '#0080FF', '#8000FF'],
+            intensity: 0.9,
+            speed: 0.5,
+            direction: 'clockwise'
+          }
         }
       ]
     } as PatternSpec,
@@ -207,8 +213,10 @@ const patterns: Omit<Pattern, 'id' | 'createdAt' | 'updatedAt'>[] = [
           type: 'pulse',
           startTime: 0,
           duration: 3000,
-          intensity: 0.7,
-          speed: 1.0
+          params: {
+            intensity: 0.7,
+            speed: 1.0
+          }
         }
       ]
     } as PatternSpec,
@@ -233,17 +241,21 @@ const patterns: Omit<Pattern, 'id' | 'createdAt' | 'updatedAt'>[] = [
           type: 'gradient',
           startTime: 0,
           duration: 10000,
-          colors: ['#FF6B6B', '#4ECDC4', '#45B7D1'],
-          intensity: 0.8,
-          speed: 0.3,
-          direction: 'counterclockwise'
+          params: {
+            colors: ['#FF6B6B', '#4ECDC4', '#45B7D1'],
+            intensity: 0.8,
+            speed: 0.3,
+            direction: 'counterclockwise'
+          }
         },
         {
           type: 'pulse',
           startTime: 0,
           duration: 10000,
-          intensity: 0.6,
-          speed: 0.8
+          params: {
+            intensity: 0.6,
+            speed: 0.8
+          }
         }
       ]
     } as PatternSpec,
@@ -297,11 +309,11 @@ async function seedPatterns() {
 async function seedFirmware() {
   console.log('🌱 Засеивание прошивок...');
   
-  const firmware = {
+  const firmwareV1 = {
     version: '1.0.0',
     hardwareVersion: 100,
     downloadUrl: 'https://storage.googleapis.com/amulet-firmware/v1.0.0/firmware.bin',
-    checksum: 'sha256:abc123...',
+    checksum: 'abc123def4567890',
     size: 1024000,
     releaseNotes: 'Первая версия прошивки с базовым функционалом',
     locales: {
@@ -317,26 +329,71 @@ async function seedFirmware() {
     publishedAt: Timestamp.now(),
     publishedBy: 'system'
   };
-  
-  const docRef = db.collection('firmware').doc();
+
+  const firmwareV2 = {
+    version: '2.0.0',
+    hardwareVersion: 200,
+    downloadUrl: 'https://storage.googleapis.com/amulet-firmware/v2.0.0/firmware.bin',
+    checksum: 'fedcba0987654321',
+    size: 2048000,
+    releaseNotes: 'Вторая версия прошивки с улучшениями для v2.0',
+    locales: {
+      'ru': {
+        releaseNotes: 'Вторая версия прошивки с улучшениями для v2.0'
+      },
+      'en': {
+        releaseNotes: 'Second firmware with improvements for v2.0'
+      }
+    },
+    isActive: true,
+    rolloutPercentage: 100,
+    publishedAt: Timestamp.now(),
+    publishedBy: 'system'
+  };
+
   const now = Timestamp.now();
-  
-  await docRef.set({
-    ...firmware,
-    id: docRef.id,
-    createdAt: now,
-    updatedAt: now
-  });
-  
-  console.log('✅ Прошивка создана: v1.0.0');
+
+  for (const fw of [firmwareV1, firmwareV2]) {
+    const docRef = db.collection('firmware').doc();
+    await docRef.set({
+      ...fw,
+      id: docRef.id,
+      createdAt: now,
+      updatedAt: now
+    });
+    console.log(`✅ Прошивка создана: v${fw.version}`);
+  }
 }
 
 async function main() {
   try {
     console.log('🚀 Начинаем засеивание базы данных...');
     
-    await seedPractices();
     await seedPatterns();
+    // После создания паттернов, свяжем практики с реальными patternId
+    // Карта ожидаемых ключей -> созданные документы
+    const createdPatterns = await db.collection('patterns').get();
+    const titleToId = new Map<string, string>();
+    createdPatterns.forEach((doc) => {
+      const data = doc.data() as any;
+      titleToId.set(data.title, data.id);
+    });
+
+    // Обновим локальные объекты практик с реальными id паттернов
+    const patternTitleByKey: Record<string, string> = {
+      breath_square: 'Дыхание (v1.0)',
+      breath_478: 'Дыхание (v2.0)',
+      meditation_mindfulness: 'Медитация света и вибрации',
+      sound_rain: 'Радуга (v2.0)'
+    };
+    practices.forEach((p) => {
+      const title = patternTitleByKey[p.patternId as string];
+      if (title && titleToId.has(title)) {
+        (p as any).patternId = titleToId.get(title);
+      }
+    });
+
+    await seedPractices();
     await seedFirmware();
     
     console.log('🎉 Засеивание завершено успешно!');
@@ -353,3 +410,28 @@ if (require.main === module) {
 }
 
 export { seedPractices, seedPatterns, seedFirmware };
+
+// Упрощённый оркестратор для тестов: создаёт паттерны, маппит практики, создаёт практики и прошивки
+export async function seedAll() {
+  await seedPatterns();
+  const createdPatterns = await db.collection('patterns').get();
+  const titleToId = new Map<string, string>();
+  createdPatterns.forEach((doc) => {
+    const data = doc.data() as any;
+    titleToId.set(data.title, data.id);
+  });
+  const patternTitleByKey: Record<string, string> = {
+    breath_square: 'Дыхание (v1.0)',
+    breath_478: 'Дыхание (v2.0)',
+    meditation_mindfulness: 'Медитация света и вибрации',
+    sound_rain: 'Радуга (v2.0)'
+  };
+  practices.forEach((p) => {
+    const title = patternTitleByKey[p.patternId as string];
+    if (title && titleToId.has(title)) {
+      (p as any).patternId = titleToId.get(title);
+    }
+  });
+  await seedPractices();
+  await seedFirmware();
+}

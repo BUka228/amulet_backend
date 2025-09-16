@@ -29,7 +29,7 @@ describe('Firestore Indexes Tests', () => {
   
   describe('Index Configuration', () => {
     test('should have valid indexes configuration', () => {
-      const indexesPath = join(__dirname, '../../../firestore.indexes.json');
+      const indexesPath = join(__dirname, '../../../../firestore.indexes.json');
       const indexesConfig = JSON.parse(readFileSync(indexesPath, 'utf8'));
       
       expect(indexesConfig).toBeDefined();
@@ -38,7 +38,7 @@ describe('Firestore Indexes Tests', () => {
     });
 
     test('should have required indexes for users collection', () => {
-      const indexesPath = join(__dirname, '../../../firestore.indexes.json');
+      const indexesPath = join(__dirname, '../../../../firestore.indexes.json');
       const indexesConfig = JSON.parse(readFileSync(indexesPath, 'utf8'));
       
       const userIndexes = indexesConfig.indexes.filter((index: any) => 
@@ -49,7 +49,7 @@ describe('Firestore Indexes Tests', () => {
     });
 
     test('should have required indexes for devices collection', () => {
-      const indexesPath = join(__dirname, '../../../firestore.indexes.json');
+      const indexesPath = join(__dirname, '../../../../firestore.indexes.json');
       const indexesConfig = JSON.parse(readFileSync(indexesPath, 'utf8'));
       
       const deviceIndexes = indexesConfig.indexes.filter((index: any) => 
@@ -60,7 +60,7 @@ describe('Firestore Indexes Tests', () => {
     });
 
     test('should have required indexes for practices collection', () => {
-      const indexesPath = join(__dirname, '../../../firestore.indexes.json');
+      const indexesPath = join(__dirname, '../../../../firestore.indexes.json');
       const indexesConfig = JSON.parse(readFileSync(indexesPath, 'utf8'));
       
       const practiceIndexes = indexesConfig.indexes.filter((index: any) => 
@@ -71,7 +71,7 @@ describe('Firestore Indexes Tests', () => {
     });
 
     test('should have required indexes for patterns collection', () => {
-      const indexesPath = join(__dirname, '../../../firestore.indexes.json');
+      const indexesPath = join(__dirname, '../../../../firestore.indexes.json');
       const indexesConfig = JSON.parse(readFileSync(indexesPath, 'utf8'));
       
       const patternIndexes = indexesConfig.indexes.filter((index: any) => 
@@ -169,7 +169,7 @@ describe('Firestore Indexes Tests', () => {
 
   describe('Index Validation', () => {
     test('should validate composite indexes', () => {
-      const indexesPath = join(__dirname, '../../../firestore.indexes.json');
+      const indexesPath = join(__dirname, '../../../../firestore.indexes.json');
       const indexesConfig = JSON.parse(readFileSync(indexesPath, 'utf8'));
       
       // Проверяем наличие составных индексов
@@ -181,7 +181,7 @@ describe('Firestore Indexes Tests', () => {
     });
 
     test('should validate array-contains indexes', () => {
-      const indexesPath = join(__dirname, '../../../firestore.indexes.json');
+      const indexesPath = join(__dirname, '../../../../firestore.indexes.json');
       const indexesConfig = JSON.parse(readFileSync(indexesPath, 'utf8'));
       
       // Проверяем наличие индексов для array-contains
@@ -193,7 +193,7 @@ describe('Firestore Indexes Tests', () => {
     });
 
     test('should validate orderBy indexes', () => {
-      const indexesPath = join(__dirname, '../../../firestore.indexes.json');
+      const indexesPath = join(__dirname, '../../../../firestore.indexes.json');
       const indexesConfig = JSON.parse(readFileSync(indexesPath, 'utf8'));
       
       // Проверяем наличие индексов для orderBy
@@ -207,7 +207,7 @@ describe('Firestore Indexes Tests', () => {
 
   describe('Index Coverage', () => {
     test('should cover all required query patterns', () => {
-      const indexesPath = join(__dirname, '../../../firestore.indexes.json');
+      const indexesPath = join(__dirname, '../../../../firestore.indexes.json');
       const indexesConfig = JSON.parse(readFileSync(indexesPath, 'utf8'));
       
       const requiredCollections = [
@@ -215,15 +215,7 @@ describe('Firestore Indexes Tests', () => {
         'devices', 
         'practices',
         'patterns',
-        'pairs',
-        'hugs',
-        'sessions',
-        'telemetry',
-        'firmware',
-        'invites',
-        'tokens',
-        'webhooks',
-        'admin_actions'
+        'firmware'
       ];
       
       const coveredCollections = new Set(

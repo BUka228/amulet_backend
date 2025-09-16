@@ -135,6 +135,15 @@ export interface PatternElement {
   speed: number; // множитель скорости
   direction?: 'clockwise' | 'counterclockwise' | 'center' | 'outward';
   leds?: number[]; // индексы светодиодов для v2.0
+  // Дополнительные параметры, ожидаемые тестами и клиентами
+  params?: {
+    color?: string;
+    colors?: string[];
+    intensity?: number;
+    speed?: number;
+    direction?: 'clockwise' | 'counterclockwise' | 'center' | 'outward';
+    [key: string]: any;
+  };
 }
 
 // Rule Collection (IFTTT правила)
