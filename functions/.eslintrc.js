@@ -22,6 +22,7 @@ module.exports = {
     "/generated/**/*", // Ignore generated files.
     "/coverage/**/*", // Ignore coverage files.
     "jest.config.js", // Ignore jest config.
+    "jest.unit.config.js", // Ignore unit jest config.
   ],
   plugins: [
     "@typescript-eslint",
@@ -91,6 +92,12 @@ module.exports = {
         "@typescript-eslint/no-explicit-any": "off",
         "@typescript-eslint/no-unused-vars": "off",
         "import/export": "off",
+        "arrow-parens": "off",
+        "@typescript-eslint/prefer-optional-chain": "off",
+        "@typescript-eslint/no-var-requires": "off",
+        "@typescript-eslint/no-inferrable-types": "off",
+        "prefer-const": "off",
+        "no-var": "off",
       },
     },
   ],
