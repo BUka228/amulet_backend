@@ -23,6 +23,4 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/src/__tests__/support/setup.ts'],
   testTimeout: 30000,
   maxWorkers: 1, // Ограничиваем количество воркеров для эмуляторов
-  globalSetup: '<rootDir>/src/__tests__/support/global-setup.ts',
-  globalTeardown: '<rootDir>/src/__tests__/support/global-teardown.ts'
 };
