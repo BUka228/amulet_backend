@@ -76,7 +76,17 @@ module.exports = {
   overrides: [
     {
       // Для тестовых файлов - более мягкие правила
-      files: ["**/*.test.ts", "**/*.spec.ts", "**/tests/**/*.ts"],
+      files: [
+        "**/*.test.ts",
+        "**/*.spec.ts",
+        "**/tests/**/*.ts",
+        "**/__tests__/**/*.ts",
+        "**/__tests__/**/*.tsx"
+      ],
+      env: {
+        jest: true,
+        node: true,
+      },
       rules: {
         "@typescript-eslint/no-explicit-any": "off",
         "@typescript-eslint/no-unused-vars": "off",
