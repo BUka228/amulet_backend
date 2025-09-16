@@ -3,7 +3,7 @@
  */
 
 import { initializeApp } from 'firebase-admin/app';
-import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { getFirestore, Timestamp, DocumentData } from 'firebase-admin/firestore';
 import { Practice, Pattern, PatternSpec } from '../types';
 
 // Инициализация Firebase Admin
@@ -375,8 +375,8 @@ async function main() {
     const createdPatterns = await db.collection('patterns').get();
     const titleToId = new Map<string, string>();
     createdPatterns.forEach((doc) => {
-      const data = doc.data() as any;
-      titleToId.set(data.title, data.id);
+      const data = doc.data() as DocumentData;
+      titleToId.set(data.title as string, data.id as string);
     });
 
     // Обновим локальные объекты практик с реальными id паттернов
@@ -388,8 +388,11 @@ async function main() {
     };
     practices.forEach((p) => {
       const title = patternTitleByKey[p.patternId as string];
-      if (title && titleToId.has(title)) {
-        (p as any).patternId = titleToId.get(title);
+      if (title) {
+        const resolvedId = titleToId.get(title);
+        if (resolvedId) {
+          p.patternId = resolvedId;
+        }
       }
     });
 
@@ -417,8 +420,8 @@ export async function seedAll() {
   const createdPatterns = await db.collection('patterns').get();
   const titleToId = new Map<string, string>();
   createdPatterns.forEach((doc) => {
-    const data = doc.data() as any;
-    titleToId.set(data.title, data.id);
+    const data = doc.data() as DocumentData;
+    titleToId.set(data.title as string, data.id as string);
   });
   const patternTitleByKey: Record<string, string> = {
     breath_square: 'Дыхание (v1.0)',
@@ -428,8 +431,11 @@ export async function seedAll() {
   };
   practices.forEach((p) => {
     const title = patternTitleByKey[p.patternId as string];
-    if (title && titleToId.has(title)) {
-      (p as any).patternId = titleToId.get(title);
+    if (title) {
+      const resolvedId = titleToId.get(title);
+      if (resolvedId) {
+        p.patternId = resolvedId;
+      }
     }
   });
   await seedPractices();

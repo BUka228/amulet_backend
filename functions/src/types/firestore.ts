@@ -142,7 +142,7 @@ export interface PatternElement {
     intensity?: number;
     speed?: number;
     direction?: 'clockwise' | 'counterclockwise' | 'center' | 'outward';
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
