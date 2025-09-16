@@ -1,12 +1,114 @@
 rules_version = '2';
-
-// Craft rules based on data in your Firestore database
-// allow write: if firestore.get(
-//    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
 service firebase.storage {
   match /b/{bucket}/o {
-    match /{allPaths=**} {
-      allow read, write: if false;
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+    
+    function isModerator() {
+      return isSignedIn() && request.auth.token.moderator == true;
+    }
+    
+    function isValidImageType() {
+      return request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+    
+    function isValidAudioType() {
+      // Учитываем реальные content-type для mp3/m4a, которые часто приходят как mpeg/mp4/x-m4a
+      return request.resource.contentType.matches('audio/(mpeg|mp3|wav|m4a|aac|mp4|x-m4a)');
+    }
+    
+    function isValidFirmwareType() {
+      return request.resource.contentType == 'application/octet-stream';
+    }
+    
+    function isValidFileSize(maxSizeBytes) {
+      return request.resource.size <= maxSizeBytes;
+    }
+
+    // User avatars - only owner can read; write with type/size checks
+    match /avatars/{userId}/{allPaths=**} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && 
+                      isValidImageType() && 
+                      isValidFileSize(5 * 1024 * 1024); // 5MB max
+    }
+
+    // Practice audio files - public read, admin write
+    match /audio/practices/{practiceId}/{allPaths=**} {
+      allow read: if true; // Public access for catalog
+      allow write: if isAdmin() && 
+                      isValidAudioType() && 
+                      isValidFileSize(50 * 1024 * 1024); // 50MB max
+    }
+
+    // Firmware binaries - public read, admin write
+    match /firmware/{hardwareVersion}/{semver}/{allPaths=**} {
+      allow read: if true; // Public firmware downloads
+      allow write: if isAdmin() && 
+                      isValidFirmwareType() && 
+                      isValidFileSize(10 * 1024 * 1024); // 10MB max
+    }
+
+    // Pattern previews - user-specific: read for owner; write with checks
+    match /patterns/previews/{userId}/{allPaths=**} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && 
+                      isValidImageType() && 
+                      isValidFileSize(2 * 1024 * 1024); // 2MB max
+    }
+
+    // Admin uploads - admin only
+    match /admin/uploads/{allPaths=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // Temporary uploads - signed in users only, auto-cleanup
+    match /temp/{userId}/{allPaths=**} {
+      allow read, write: if isOwner(userId) && 
+                            isValidFileSize(10 * 1024 * 1024); // 10MB max
+    }
+
+    // Backup exports - admin only
+    match /backups/{allPaths=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // Logs and diagnostics - admin only
+    match /logs/{allPaths=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // Public assets (icons, etc.) - read-only for all
+    match /public/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // User-generated content moderation queue
+    match /moderation/{allPaths=**} {
+      allow read: if isModerator() || isAdmin();
+      allow write: if isSignedIn();
+    }
+
+    // Analytics and telemetry data - admin only
+    match /analytics/{allPaths=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // Device-specific data (if needed)
+    match /devices/{deviceId}/{allPaths=**} {
+      allow read, write: if isSignedIn() && 
+                            request.auth.uid in resource.metadata.ownerIds;
     }
   }
 }

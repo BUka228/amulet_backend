@@ -22,6 +22,8 @@
     "logs": "firebase functions:log",
     "seed": "npm run build && node lib/scripts/seed.js",
     "seed:dev": "npm run build && firebase emulators:exec --only firestore 'node lib/scripts/seed.js'",
+    "seed:storage": "npm run build && node lib/scripts/seedStorage.js",
+    "seed:storage:dev": "npm run build && firebase emulators:exec --only storage 'node lib/scripts/seedStorage.js'",
     "emulators": "firebase emulators:start --only firestore,auth,storage,functions",
     "emulators:test": "firebase emulators:exec --only firestore,auth,storage,functions 'npm test'"
   },
