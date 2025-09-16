@@ -1,10 +1,182 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Разрешаем читать и писать в любую коллекцию,
-    // ТОЛЬКО если пользователь аутентифицирован.
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(ownerId) {
+      return isSignedIn() && request.auth.uid == ownerId;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+    
+    function isModerator() {
+      return isSignedIn() && request.auth.token.moderator == true;
+    }
+    
+    function isMemberOfPair(memberIds) {
+      return isSignedIn() && request.auth.uid in memberIds;
+    }
+    
+    function isPairNotBlocked(pairData) {
+      return pairData.status != 'blocked';
+    }
+    
+    function isValidIdempotencyKey() {
+      return request.headers['idempotency-key'] is string && 
+             request.headers['idempotency-key'].size() >= 8 &&
+             request.headers['idempotency-key'].size() <= 128;
+    }
+    
+    function hasValidAppCheck() {
+      return request.headers['x-firebase-appcheck'] is string;
+    }
+    
+    // Rate limiting helper (simplified - real implementation in Cloud Functions)
+    function isWithinRateLimit() {
+      return true; // Implemented in Cloud Functions with Firestore counters
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read, update: if isOwner(userId);
+      allow create: if isSignedIn() && 
+                       request.auth.uid == userId &&
+                       request.resource.data.keys().hasAll(['displayName', 'createdAt', 'updatedAt']) &&
+                       request.resource.data.createdAt == request.time &&
+                       request.resource.data.updatedAt == request.time;
+      allow delete: if false; // Account deletion handled by Cloud Functions
+    }
+
+    // Devices collection
+    match /devices/{deviceId} {
+      allow read, update, delete: if isOwner(resource.data.ownerId);
+      allow create: if isOwner(request.resource.data.ownerId) &&
+                       request.resource.data.keys().hasAll(['ownerId', 'serial', 'hardwareVersion', 'firmwareVersion', 'pairedAt']) &&
+                       request.resource.data.serial is string &&
+                       request.resource.data.serial.size() > 0 &&
+                       request.resource.data.hardwareVersion is int &&
+                       request.resource.data.firmwareVersion is int;
+      
+      // Prevent modification of critical fields
+      allow update: if isOwner(resource.data.ownerId) &&
+                       request.resource.data.ownerId == resource.data.ownerId &&
+                       request.resource.data.serial == resource.data.serial;
+    }
+
+    // Pairs collection
+    match /pairs/{pairId} {
+      allow read: if isMemberOfPair(resource.data.memberIds);
+      allow create: if isSignedIn() && 
+                       request.auth.uid in request.resource.data.memberIds &&
+                       request.resource.data.memberIds.size() == 2 &&
+                       request.resource.data.keys().hasAll(['memberIds', 'status', 'createdAt']) &&
+                       request.resource.data.status in ['active', 'pending', 'blocked'];
+      allow update: if isMemberOfPair(resource.data.memberIds) &&
+                       (request.resource.data.status != 'blocked' || isAdmin()) &&
+                       request.resource.data.memberIds == resource.data.memberIds;
+    }
+
+    // Hugs collection
+    match /hugs/{hugId} {
+      allow read: if isSignedIn() && 
+                     (request.auth.uid == resource.data.fromUserId || 
+                      request.auth.uid == resource.data.toUserId);
+      allow create: if isSignedIn() &&
+                       request.auth.uid == request.resource.data.fromUserId &&
+                       request.resource.data.keys().hasAll(['fromUserId', 'emotion', 'createdAt']) &&
+                       request.resource.data.emotion.keys().hasAll(['color', 'patternId']) &&
+                       request.resource.data.emotion.color.matches('^#[0-9A-Fa-f]{6}$') &&
+                       (request.resource.data.toUserId is string || request.resource.data.pairId is string) &&
+                       !(request.resource.data.toUserId is string && request.resource.data.pairId is string);
+    }
+
+    // Practices collection (public read, admin write)
+    match /practices/{practiceId} {
+      allow read: if true; // Public catalog
+      allow write: if isAdmin();
+    }
+
+    // Patterns collection
+    match /patterns/{patternId} {
+      allow read: if resource.data.public == true || 
+                     isOwner(resource.data.ownerId) || 
+                     isAdmin() || 
+                     isModerator();
+      allow create: if isSignedIn() &&
+                       request.auth.uid == request.resource.data.ownerId &&
+                       request.resource.data.keys().hasAll(['ownerId', 'kind', 'spec', 'public', 'hardwareVersion', 'createdAt', 'updatedAt']) &&
+                       request.resource.data.kind in ['light', 'haptic', 'combo'] &&
+                       request.resource.data.hardwareVersion in [100, 200] &&
+                       request.resource.data.createdAt == request.time &&
+                       request.resource.data.updatedAt == request.time;
+      allow update: if isOwner(resource.data.ownerId) || isAdmin();
+      allow delete: if isOwner(resource.data.ownerId) || isAdmin();
+    }
+
+    // Rules collection (IFTTT)
+    match /rules/{ruleId} {
+      allow read, write: if isOwner(resource.data.ownerId);
+      allow create: if isSignedIn() &&
+                       request.auth.uid == request.resource.data.ownerId &&
+                       request.resource.data.keys().hasAll(['ownerId', 'trigger', 'action', 'enabled']) &&
+                       request.resource.data.trigger.keys().hasAll(['type', 'params']) &&
+                       request.resource.data.action.keys().hasAll(['type', 'params']);
+    }
+
+    // Sessions collection
+    match /sessions/{sessionId} {
+      allow read, write: if isOwner(resource.data.ownerId);
+      allow create: if isSignedIn() &&
+                       request.auth.uid == request.resource.data.ownerId &&
+                       request.resource.data.keys().hasAll(['ownerId', 'practiceId', 'status', 'startedAt']) &&
+                       request.resource.data.status in ['started', 'completed', 'aborted'];
+    }
+
+    // Telemetry collection (write-only for devices, read for admins)
+    match /telemetry/{docId} {
+      allow read: if isAdmin();
+      allow write: if isSignedIn() && 
+                      request.resource.data.keys().hasAll(['deviceId', 'timestamp']) &&
+                      request.resource.data.timestamp <= request.time;
+    }
+
+    // Firmware collection (public read, admin write)
+    match /firmware/{version} {
+      allow read: if true; // Public firmware info
+      allow write: if isAdmin();
+    }
+
+    // Idempotency keys collection (internal use)
+    match /idempotencyKeys/{keyHash} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Rate limiting collection (internal use)
+    match /rateLimits/{key} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Audit logs collection (admin only)
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Invitations collection (temporary)
+    match /invitations/{inviteId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Push tokens collection (user-specific)
+    match /pushTokens/{tokenId} {
+      allow read, write: if isOwner(resource.data.userId);
+      allow create: if isSignedIn() &&
+                       request.auth.uid == request.resource.data.userId;
     }
   }
 }

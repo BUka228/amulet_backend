@@ -23,7 +23,6 @@ service firebase.storage {
     }
     
     function isValidAudioType() {
-      // Учитываем реальные content-type для mp3/m4a, которые часто приходят как mpeg/mp4/x-m4a
       return request.resource.contentType.matches('audio/(mpeg|mp3|wav|m4a|aac|mp4|x-m4a)');
     }
     
