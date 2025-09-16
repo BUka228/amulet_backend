@@ -22,7 +22,8 @@ module.exports = {
   coverageReporters: ['text', 'lcov', 'html'],
   setupFilesAfterEnv: ['<rootDir>/src/tests/setup.ts'],
   testTimeout: 30000,
-  maxWorkers: 1, // Ограничиваем количество воркеров для эмуляторов
-  globalSetup: '<rootDir>/src/tests/global-setup.ts',
-  globalTeardown: '<rootDir>/src/tests/global-teardown.ts'
+  maxWorkers: 1
+  // Без globalSetup и globalTeardown для юнит-тестов
 };
+
+
