@@ -46,15 +46,13 @@ service cloud.firestore {
       allow read, update: if isOwner(userId);
       allow create: if isSignedIn() && 
                        request.auth.uid == userId &&
-                       request.resource.data.keys().hasAll(['displayName', 'createdAt', 'updatedAt']) &&
-                       request.resource.data.createdAt == request.time &&
-                       request.resource.data.updatedAt == request.time;
+                       request.resource.data.keys().hasAll(['displayName', 'createdAt', 'updatedAt']);
       allow delete: if false; // Account deletion handled by Cloud Functions
     }
 
     // Devices collection
     match /devices/{deviceId} {
-      allow read, update, delete: if isOwner(resource.data.ownerId);
+      allow read, delete: if isOwner(resource.data.ownerId);
       allow create: if isOwner(request.resource.data.ownerId) &&
                        request.resource.data.keys().hasAll(['ownerId', 'serial', 'hardwareVersion', 'firmwareVersion', 'pairedAt']) &&
                        request.resource.data.serial is string &&
@@ -77,8 +75,8 @@ service cloud.firestore {
                        request.resource.data.keys().hasAll(['memberIds', 'status', 'createdAt']) &&
                        request.resource.data.status in ['active', 'pending', 'blocked'];
       allow update: if isMemberOfPair(resource.data.memberIds) &&
-                       (request.resource.data.status != 'blocked' || isAdmin()) &&
-                       request.resource.data.memberIds == resource.data.memberIds;
+                       request.resource.data.memberIds == resource.data.memberIds &&
+                       (request.resource.data.status != 'blocked' || isAdmin());
     }
 
     // Hugs collection
@@ -91,8 +89,8 @@ service cloud.firestore {
                        request.resource.data.keys().hasAll(['fromUserId', 'emotion', 'createdAt']) &&
                        request.resource.data.emotion.keys().hasAll(['color', 'patternId']) &&
                        request.resource.data.emotion.color.matches('^#[0-9A-Fa-f]{6}$') &&
-                       (request.resource.data.toUserId is string || request.resource.data.pairId is string) &&
-                       !(request.resource.data.toUserId is string && request.resource.data.pairId is string);
+                       ((request.resource.data.toUserId is string && request.resource.data.pairId == null) ||
+                        (request.resource.data.pairId is string && request.resource.data.toUserId == null));
     }
 
     // Practices collection (public read, admin write)
@@ -111,9 +109,7 @@ service cloud.firestore {
                        request.auth.uid == request.resource.data.ownerId &&
                        request.resource.data.keys().hasAll(['ownerId', 'kind', 'spec', 'public', 'hardwareVersion', 'createdAt', 'updatedAt']) &&
                        request.resource.data.kind in ['light', 'haptic', 'combo'] &&
-                       request.resource.data.hardwareVersion in [100, 200] &&
-                       request.resource.data.createdAt == request.time &&
-                       request.resource.data.updatedAt == request.time;
+                       request.resource.data.hardwareVersion in [100, 200];
       allow update: if isOwner(resource.data.ownerId) || isAdmin();
       allow delete: if isOwner(resource.data.ownerId) || isAdmin();
     }
