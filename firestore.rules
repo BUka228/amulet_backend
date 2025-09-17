@@ -46,7 +46,8 @@ service cloud.firestore {
       allow read, update: if isOwner(userId);
       allow create: if isSignedIn() && 
                        request.auth.uid == userId &&
-                       request.resource.data.keys().hasAll(['displayName', 'createdAt', 'updatedAt']);
+                       // Минимально необходимые поля для инициализации профиля
+                       request.resource.data.keys().hasAll(['displayName', 'consents', 'createdAt', 'updatedAt']);
       allow delete: if false; // Account deletion handled by Cloud Functions
     }
 
@@ -74,9 +75,15 @@ service cloud.firestore {
                        request.resource.data.memberIds.size() == 2 &&
                        request.resource.data.keys().hasAll(['memberIds', 'status', 'createdAt']) &&
                        request.resource.data.status in ['active', 'pending', 'blocked'];
-      allow update: if isMemberOfPair(resource.data.memberIds) &&
-                       request.resource.data.memberIds == resource.data.memberIds &&
-                       (request.resource.data.status != 'blocked' || isAdmin());
+      // Участники могут обновлять пару в пределах безопасных изменений,
+      // админ может модерировать любую пару
+      allow update: if (
+                       // Участник пары не может менять состав участников
+                       (isMemberOfPair(resource.data.memberIds) &&
+                        request.resource.data.memberIds == resource.data.memberIds &&
+                        // Блокировку может инициировать только админ
+                        (request.resource.data.status != 'blocked' || isAdmin()))
+                       ) || isAdmin();
     }
 
     // Hugs collection

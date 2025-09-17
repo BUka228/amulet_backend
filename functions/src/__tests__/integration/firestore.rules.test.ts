@@ -30,6 +30,161 @@ describe('Firestore Security Rules', () => {
     await testEnv.cleanup();
   });
 
+  describe('Роли и права доступа', () => {
+    test('админ может блокировать пары', async () => {
+      const admin = testEnv.authenticatedContext('admin_user', {
+        admin: true
+      });
+      const adminDb = admin.firestore();
+
+      // Создаём пару через обычного пользователя
+      const user = testEnv.authenticatedContext('user1');
+      const userDb = user.firestore();
+      
+      await setDoc(doc(userDb, 'pairs', 'pair_admin_test'), {
+        memberIds: ['user1', 'user2'],
+        status: 'active',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      // Админ может заблокировать пару (модерация вне зависимости от участия)
+      await assertSucceeds(updateDoc(doc(adminDb, 'pairs', 'pair_admin_test'), {
+        status: 'blocked'
+      }));
+    });
+
+    test('админ-участник может блокировать пары', async () => {
+      const admin = testEnv.authenticatedContext('admin_user', {
+        admin: true
+      });
+      const adminDb = admin.firestore();
+
+      // Создаём пару, где админ является участником
+      await setDoc(doc(adminDb, 'pairs', 'pair_admin_member'), {
+        memberIds: ['admin_user', 'user2'],
+        status: 'active',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      // Админ-участник может заблокировать пару
+      await assertSucceeds(updateDoc(doc(adminDb, 'pairs', 'pair_admin_member'), {
+        status: 'blocked'
+      }));
+    });
+
+    test('обычный пользователь не может блокировать пары', async () => {
+      const user = testEnv.authenticatedContext('regular_user');
+      const userDb = user.firestore();
+
+      // Создаём пару
+      await setDoc(doc(userDb, 'pairs', 'pair_regular_test'), {
+        memberIds: ['regular_user', 'user2'],
+        status: 'active',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      // Обычный пользователь не может заблокировать пару
+      await assertFails(updateDoc(doc(userDb, 'pairs', 'pair_regular_test'), {
+        status: 'blocked'
+      }));
+    });
+
+    test('админ может читать телеметрию', async () => {
+      const admin = testEnv.authenticatedContext('admin_user', {
+        admin: true
+      });
+      const adminDb = admin.firestore();
+
+      // Создаём телеметрию
+      await setDoc(doc(adminDb, 'telemetry', 'telemetry_1'), {
+        deviceId: 'device_1',
+        timestamp: new Date(),
+        data: { temperature: 25 }
+      });
+
+      // Админ может читать телеметрию
+      await assertSucceeds(getDoc(doc(adminDb, 'telemetry', 'telemetry_1')));
+    });
+
+    test('обычный пользователь не может читать телеметрию', async () => {
+      const user = testEnv.authenticatedContext('regular_user');
+      const userDb = user.firestore();
+
+      // Создаём телеметрию
+      await setDoc(doc(userDb, 'telemetry', 'telemetry_2'), {
+        deviceId: 'device_1',
+        timestamp: new Date(),
+        data: { temperature: 25 }
+      });
+
+      // Обычный пользователь не может читать телеметрию
+      await assertFails(getDoc(doc(userDb, 'telemetry', 'telemetry_2')));
+    });
+  });
+
+  describe('Анонимный доступ', () => {
+    test('анонимный пользователь может читать practices', async () => {
+      const anon = testEnv.unauthenticatedContext();
+      const anonDb = anon.firestore();
+      
+      // Создаём практику через аутентифицированного пользователя
+      const admin = testEnv.authenticatedContext('admin_user', { admin: true });
+      const adminDb = admin.firestore();
+      
+      await setDoc(doc(adminDb, 'practices', 'practice_1'), {
+        name: 'Test Practice',
+        description: 'Test Description',
+        public: true,
+        createdAt: new Date()
+      });
+
+      // Анонимный пользователь может читать публичные практики
+      await assertSucceeds(getDoc(doc(anonDb, 'practices', 'practice_1')));
+    });
+
+    test('анонимный пользователь не может читать users', async () => {
+      const anon = testEnv.unauthenticatedContext();
+      const anonDb = anon.firestore();
+      
+      // Создаём пользователя через аутентифицированного пользователя
+      const user = testEnv.authenticatedContext('user_anon_test');
+      const userDb = user.firestore();
+      
+      await setDoc(doc(userDb, 'users', 'user_anon_test'), {
+        displayName: 'Test User',
+        consents: {},
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      // Анонимный пользователь не может читать пользователей
+      await assertFails(getDoc(doc(anonDb, 'users', 'user_anon_test')));
+    });
+
+    test('анонимный пользователь не может читать devices', async () => {
+      const anon = testEnv.unauthenticatedContext();
+      const anonDb = anon.firestore();
+      
+      // Создаём устройство через аутентифицированного пользователя
+      const user = testEnv.authenticatedContext('user_1');
+      const userDb = user.firestore();
+      
+      await setDoc(doc(userDb, 'devices', 'device_anon_test'), {
+        ownerId: 'user_1',
+        serial: 'SERIAL123',
+        hardwareVersion: 100,
+        firmwareVersion: 1,
+        pairedAt: new Date()
+      });
+
+      // Анонимный пользователь не может читать устройства
+      await assertFails(getDoc(doc(anonDb, 'devices', 'device_anon_test')));
+    });
+  });
+
   beforeEach(async () => {
     await testEnv.clearFirestore();
   });
@@ -42,6 +197,7 @@ describe('Firestore Security Rules', () => {
       // Создаём профиль
       await assertSucceeds(setDoc(doc(ownerDb, 'users', 'user_owner'), {
         displayName: 'Test User',
+        consents: {},
         createdAt: new Date(),
         updatedAt: new Date()
       }));
@@ -65,6 +221,7 @@ describe('Firestore Security Rules', () => {
       // Создаём профиль владельца
       await assertSucceeds(setDoc(doc(ownerDb, 'users', 'user_owner'), {
         displayName: 'Test User',
+        consents: {},
         createdAt: new Date(),
         updatedAt: new Date()
       }));
@@ -86,6 +243,7 @@ describe('Firestore Security Rules', () => {
       // Полный профиль должен пройти
       await assertSucceeds(setDoc(doc(ownerDb, 'users', 'user_owner'), {
         displayName: 'Test User',
+        consents: {},
         createdAt: new Date(),
         updatedAt: new Date()
       }));
@@ -208,6 +366,15 @@ describe('Firestore Security Rules', () => {
         // отсутствуют toUserId и pairId
       }));
 
+      // Попытка создать с обоими полями должна провалиться
+      await assertFails(setDoc(doc(senderDb, 'hugs', 'hug_both'), {
+        fromUserId: 'user_sender',
+        toUserId: 'user_receiver',
+        pairId: 'pair_123',
+        emotion: { color: '#FF0000', patternId: 'pattern_1' },
+        createdAt: new Date()
+      }));
+
       // Корректное объятие должно пройти
       await assertSucceeds(setDoc(doc(senderDb, 'hugs', 'hug_1'), {
         fromUserId: 'user_sender',
@@ -245,6 +412,19 @@ describe('Firestore Security Rules', () => {
           color: '#FF0000',
           patternId: 'pattern_1'
         },
+        createdAt: new Date()
+      }));
+    });
+
+    test('создание объятия с pairId', async () => {
+      const sender = testEnv.authenticatedContext('user_sender');
+      const senderDb = sender.firestore();
+
+      await assertSucceeds(setDoc(doc(senderDb, 'hugs', 'hug_pair'), {
+        fromUserId: 'user_sender',
+        toUserId: null,
+        pairId: 'pair_123',
+        emotion: { color: '#00FF00', patternId: 'pattern_2' },
         createdAt: new Date()
       }));
     });
