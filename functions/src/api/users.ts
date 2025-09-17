@@ -1,22 +1,12 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { authenticateToken } from '../core/auth';
 import { sendError } from '../core/http';
-import { initializeApp, getApps } from 'firebase-admin/app';
-import { getFirestore, FieldValue, CollectionReference, DocumentData } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
+import { db } from '../core/firebase';
 import { z } from 'zod';
 
 // Ленивый доступ к Firestore и коллекции users, чтобы переменные окружения из setup успевали примениться
-function getUsersCollection(): CollectionReference<DocumentData> {
-  try {
-    if (getApps().length === 0) {
-      // Указываем projectId из окружения для эмулятора
-      initializeApp({ projectId: process.env.GOOGLE_CLOUD_PROJECT || 'demo-test' });
-    }
-  } catch (_) {
-    // ignore
-  }
-  return getFirestore().collection('users');
-}
+// getUsersCollection удалён: используем db.collection('users') напрямую
 
 // Схемы валидации (OpenAPI → Zod)
 const userInitSchema = z.object({
@@ -65,7 +55,7 @@ usersRouter.post('/users.me.init', validateBody('init'), async (req: Request, re
   }
 
   const payload = (req.body ?? {}) as Record<string, unknown>;
-  const docRef = getUsersCollection().doc(uid);
+  const docRef = db.collection('users').doc(uid);
   const snap = await docRef.get();
   const now = FieldValue.serverTimestamp();
 
@@ -95,7 +85,7 @@ usersRouter.get('/users.me', async (req: Request, res: Response) => {
   if (!uid) {
     return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
   }
-  const doc = await getUsersCollection().doc(uid).get();
+  const doc = await db.collection('users').doc(uid).get();
   if (!doc.exists) {
     return sendError(res, { code: 'not_found', message: 'User profile not found' });
   }
@@ -108,7 +98,7 @@ usersRouter.patch('/users.me', validateBody('update'), async (req: Request, res:
   if (!uid) {
     return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
   }
-  const docRef = getUsersCollection().doc(uid);
+  const docRef = db.collection('users').doc(uid);
   const snap = await docRef.get();
   if (!snap.exists) {
     return sendError(res, { code: 'not_found', message: 'User profile not found' });

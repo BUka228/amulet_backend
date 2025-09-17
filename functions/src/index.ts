@@ -8,6 +8,10 @@
 
 import {setGlobalOptions} from "firebase-functions";
 import * as logger from "firebase-functions/logger";
+import { initializeFirebase } from './core/firebase';
+
+// Инициализация Firebase (эмулятор/прод)
+initializeFirebase();
 
 // Импорт API функций
 import { api } from './api/test';
