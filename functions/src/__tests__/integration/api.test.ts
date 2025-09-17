@@ -2,9 +2,10 @@
  * Тесты для HTTP API endpoints
  */
 
-import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+import { describe, test, expect, jest, beforeEach, beforeAll } from '@jest/globals';
 import request from 'supertest';
 import { app } from '../../api/test';
+import * as admin from 'firebase-admin';
 
 // Мок для Firebase Admin
 const mockVerifyIdToken = jest.fn() as jest.MockedFunction<any>;
@@ -12,6 +13,8 @@ const mockGetUser = jest.fn() as jest.MockedFunction<any>;
 const mockAppCheck = jest.fn() as jest.MockedFunction<any>;
 
 jest.mock('firebase-admin', () => ({
+  apps: [],
+  initializeApp: jest.fn(),
   auth: jest.fn(() => ({
     verifyIdToken: mockVerifyIdToken,
     getUser: mockGetUser
@@ -22,6 +25,12 @@ jest.mock('firebase-admin', () => ({
 }));
 
 describe('API Endpoints Tests', () => {
+
+
+  beforeAll(() => {
+    // Firebase Admin уже инициализирован через моки
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
   });

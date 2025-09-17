@@ -1,9 +1,17 @@
 import request from 'supertest';
 import { app } from '../../api/test';
+import * as admin from 'firebase-admin';
 
 describe('Users API (/v1/users.me*)', () => {
   const agent = request(app);
   const headers = { 'X-Test-Uid': 'u_integration_1' } as Record<string, string>;
+
+  beforeAll(() => {
+    // Убедимся, что приложение Firebase Admin инициализировано
+    if (admin.apps.length === 0) {
+      admin.initializeApp({ projectId: 'amulet-test' });
+    }
+  });
 
   it('POST /v1/users.me.init creates or updates profile', async () => {
     const res = await agent
@@ -17,6 +25,12 @@ describe('Users API (/v1/users.me*)', () => {
   });
 
   it('GET /v1/users.me returns current profile', async () => {
+    // Ensure profile exists for this test
+    await agent
+      .post('/v1/users.me.init')
+      .set(headers)
+      .send({ displayName: 'Alice', timezone: 'Europe/Moscow', language: 'ru-RU', consents: { marketing: false } })
+      .expect(200);
     const res = await agent.get('/v1/users.me').set(headers);
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('user');
@@ -24,6 +38,12 @@ describe('Users API (/v1/users.me*)', () => {
   });
 
   it('PATCH /v1/users.me updates profile fields', async () => {
+    // Ensure profile exists for this test
+    await agent
+      .post('/v1/users.me.init')
+      .set(headers)
+      .send({ displayName: 'Alice', timezone: 'Europe/Moscow', language: 'ru-RU', consents: { marketing: false } })
+      .expect(200);
     const res = await agent
       .patch('/v1/users.me')
       .set(headers)

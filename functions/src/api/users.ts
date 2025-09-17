@@ -14,7 +14,7 @@ const userInitSchema = z.object({
   timezone: z.string().min(1).max(100).optional(),
   language: z.string().min(2).max(10).optional(),
   consents: z.object({}).catchall(z.unknown()).optional(),
-});
+}).strict();
 
 const userUpdateSchema = z.object({
   displayName: z.string().min(1).max(200).optional(),
@@ -22,7 +22,7 @@ const userUpdateSchema = z.object({
   timezone: z.string().min(1).max(100).optional(),
   language: z.string().min(2).max(10).optional(),
   consents: z.object({}).catchall(z.unknown()).optional(),
-});
+}).strict();
 
 export const usersRouter = express.Router();
 
@@ -42,9 +42,21 @@ function validateBody(schema: 'init' | 'update') {
       next();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Validation error';
-      return sendError(res, { code: 'validation_failed', message });
+      return sendError(res, { code: 'invalid_argument', message });
     }
   };
+}
+
+// Утилита: удалить поля со значением undefined (Firestore не принимает undefined)
+function omitUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  const cleaned: Partial<T> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      // @ts-expect-error: assignment by key
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
 }
 
 // POST /v1/users.me.init — инициализация профиля
@@ -54,26 +66,27 @@ usersRouter.post('/users.me.init', validateBody('init'), async (req: Request, re
     return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
   }
 
-  const payload = (req.body ?? {}) as Record<string, unknown>;
+  const payload = omitUndefined((req.body ?? {}) as Record<string, unknown>);
   const docRef = db.collection('users').doc(uid);
   const snap = await docRef.get();
   const now = FieldValue.serverTimestamp();
 
   if (snap.exists) {
-    await docRef.set({ ...payload, id: uid, updatedAt: now }, { merge: true });
+    await docRef.set(omitUndefined({ ...payload, id: uid, updatedAt: now }), { merge: true });
   } else {
-    await docRef.set({
+    const data = omitUndefined({
       id: uid,
-      displayName: payload.displayName,
-      avatarUrl: payload['avatarUrl'],
-      timezone: payload.timezone,
-      language: payload.language,
-      consents: payload.consents ?? {},
+      displayName: payload.displayName as string | undefined,
+      avatarUrl: (payload as Record<string, unknown>)['avatarUrl'] as string | undefined,
+      timezone: payload.timezone as string | undefined,
+      language: payload.language as string | undefined,
+      consents: (payload.consents as Record<string, unknown> | undefined) ?? {},
       createdAt: now,
       updatedAt: now,
-      pushTokens: [],
+      pushTokens: [] as string[],
       isDeleted: false,
     });
+    await docRef.set(data);
   }
   const fresh = await docRef.get();
   return res.status(200).json({ user: fresh.data() });
@@ -103,9 +116,9 @@ usersRouter.patch('/users.me', validateBody('update'), async (req: Request, res:
   if (!snap.exists) {
     return sendError(res, { code: 'not_found', message: 'User profile not found' });
   }
-  const payload = (req.body ?? {}) as Record<string, unknown>;
+  const payload = omitUndefined((req.body ?? {}) as Record<string, unknown>);
   const now = FieldValue.serverTimestamp();
-  await docRef.set({ ...payload, id: uid, updatedAt: now }, { merge: true });
+  await docRef.set(omitUndefined({ ...payload, id: uid, updatedAt: now }), { merge: true });
   const fresh = await docRef.get();
   return res.status(200).json({ user: fresh.data() });
 });
