@@ -11,6 +11,9 @@ beforeAll(async () => {
   process.env.FIREBASE_AUTH_EMULATOR_HOST = 'localhost:9099';
   process.env.FIREBASE_STORAGE_EMULATOR_HOST = 'localhost:9199';
   process.env.FIREBASE_FUNCTIONS_EMULATOR_HOST = 'localhost:5001';
+  // Проект для Admin SDK в тестах
+  process.env.GOOGLE_CLOUD_PROJECT = process.env.GOOGLE_CLOUD_PROJECT || 'demo-test';
+  process.env.FIREBASE_CONFIG = process.env.FIREBASE_CONFIG || JSON.stringify({ projectId: 'demo-test' });
 });
 
 // Очистка после каждого теста

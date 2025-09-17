@@ -1,25 +1,38 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { authenticateToken } from '../core/auth';
 import { sendError } from '../core/http';
+import { initializeApp, getApps } from 'firebase-admin/app';
+import { getFirestore, FieldValue, CollectionReference, DocumentData } from 'firebase-admin/firestore';
+import { z } from 'zod';
 
-// Заглушечная in-memory реализация вместо Firestore до подключения БД
-// (соответствует API спецификации и позволяет пройти первые интеграционные тесты роутинга)
-type UserDoc = {
-  id: string;
-  displayName?: string;
-  avatarUrl?: string;
-  timezone?: string;
-  language?: string;
-  consents?: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-};
-
-const usersMem: Map<string, UserDoc> = new Map();
-
-function getNowIso(): string {
-  return new Date().toISOString();
+// Ленивый доступ к Firestore и коллекции users, чтобы переменные окружения из setup успевали примениться
+function getUsersCollection(): CollectionReference<DocumentData> {
+  try {
+    if (getApps().length === 0) {
+      // Указываем projectId из окружения для эмулятора
+      initializeApp({ projectId: process.env.GOOGLE_CLOUD_PROJECT || 'demo-test' });
+    }
+  } catch (_) {
+    // ignore
+  }
+  return getFirestore().collection('users');
 }
+
+// Схемы валидации (OpenAPI → Zod)
+const userInitSchema = z.object({
+  displayName: z.string().min(1).max(200).optional(),
+  timezone: z.string().min(1).max(100).optional(),
+  language: z.string().min(2).max(10).optional(),
+  consents: z.object({}).catchall(z.unknown()).optional(),
+});
+
+const userUpdateSchema = z.object({
+  displayName: z.string().min(1).max(200).optional(),
+  avatarUrl: z.string().url().max(2000).optional(),
+  timezone: z.string().min(1).max(100).optional(),
+  language: z.string().min(2).max(10).optional(),
+  consents: z.object({}).catchall(z.unknown()).optional(),
+});
 
 export const usersRouter = express.Router();
 
@@ -27,106 +40,84 @@ export const usersRouter = express.Router();
 // В тестовой среде разрешаем анонимный доступ и подставляем контекст через тестовый мидлварь в app
 usersRouter.use(authenticateToken({ allowAnonymous: process.env.NODE_ENV === 'test' }));
 
-// Простейшая валидация по OpenAPI-схемам (минимум полей и типов)
+// Валидация тела запроса через Zod
 function validateBody(schema: 'init' | 'update') {
   return (req: Request, res: Response, next: NextFunction) => {
-    const body = req.body;
-    if (body == null || typeof body !== 'object') {
-      return sendError(res, { code: 'invalid_argument', message: 'Body must be a JSON object' });
-    }
-    const allowedFields = schema === 'init' ?
-      ['displayName', 'timezone', 'language', 'consents'] :
-      ['displayName', 'avatarUrl', 'timezone', 'language', 'consents'];
-    for (const key of Object.keys(body)) {
-      if (!allowedFields.includes(key)) {
-        return sendError(res, { code: 'invalid_argument', message: `Unexpected field: ${key}` });
+    try {
+      if (schema === 'init') {
+        userInitSchema.parse(req.body ?? {});
+      } else {
+        userUpdateSchema.parse(req.body ?? {});
       }
+      next();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Validation error';
+      return sendError(res, { code: 'validation_failed', message });
     }
-    if (body.displayName != null && typeof body.displayName !== 'string') {
-      return sendError(res, { code: 'invalid_argument', message: 'displayName must be string' });
-    }
-    if (body.avatarUrl != null && typeof body.avatarUrl !== 'string') {
-      return sendError(res, { code: 'invalid_argument', message: 'avatarUrl must be string' });
-    }
-    if (body.timezone != null && typeof body.timezone !== 'string') {
-      return sendError(res, { code: 'invalid_argument', message: 'timezone must be string' });
-    }
-    if (body.language != null && typeof body.language !== 'string') {
-      return sendError(res, { code: 'invalid_argument', message: 'language must be string' });
-    }
-    if (body.consents != null && typeof body.consents !== 'object') {
-      return sendError(res, { code: 'invalid_argument', message: 'consents must be object' });
-    }
-    next();
   };
 }
 
 // POST /v1/users.me.init — инициализация профиля
-usersRouter.post('/users.me.init', validateBody('init'), (req: Request, res: Response) => {
+usersRouter.post('/users.me.init', validateBody('init'), async (req: Request, res: Response) => {
   const uid = req.auth?.user.uid;
   if (!uid) {
     return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
   }
 
-  const existing = usersMem.get(uid);
-  const now = getNowIso();
-  const payload = req.body ?? {};
+  const payload = (req.body ?? {}) as Record<string, unknown>;
+  const docRef = getUsersCollection().doc(uid);
+  const snap = await docRef.get();
+  const now = FieldValue.serverTimestamp();
 
-  const user: UserDoc = existing ?
-    {
-      ...existing,
-      ...payload,
-      id: uid,
-      updatedAt: now,
-    } :
-    {
+  if (snap.exists) {
+    await docRef.set({ ...payload, id: uid, updatedAt: now }, { merge: true });
+  } else {
+    await docRef.set({
       id: uid,
       displayName: payload.displayName,
-      avatarUrl: payload.avatarUrl,
+      avatarUrl: payload['avatarUrl'],
       timezone: payload.timezone,
       language: payload.language,
-      consents: payload.consents,
+      consents: payload.consents ?? {},
       createdAt: now,
       updatedAt: now,
-    };
-
-  usersMem.set(uid, user);
-  return res.status(200).json({ user });
+      pushTokens: [],
+      isDeleted: false,
+    });
+  }
+  const fresh = await docRef.get();
+  return res.status(200).json({ user: fresh.data() });
 });
 
 // GET /v1/users.me — получить профиль
-usersRouter.get('/users.me', (req: Request, res: Response) => {
+usersRouter.get('/users.me', async (req: Request, res: Response) => {
   const uid = req.auth?.user.uid;
   if (!uid) {
     return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
   }
-  const user = usersMem.get(uid);
-  if (!user) {
+  const doc = await getUsersCollection().doc(uid).get();
+  if (!doc.exists) {
     return sendError(res, { code: 'not_found', message: 'User profile not found' });
   }
-  return res.status(200).json({ user });
+  return res.status(200).json({ user: doc.data() });
 });
 
 // PATCH /v1/users.me — обновить профиль
-usersRouter.patch('/users.me', validateBody('update'), (req: Request, res: Response) => {
+usersRouter.patch('/users.me', validateBody('update'), async (req: Request, res: Response) => {
   const uid = req.auth?.user.uid;
   if (!uid) {
     return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
   }
-  const existing = usersMem.get(uid);
-  if (!existing) {
+  const docRef = getUsersCollection().doc(uid);
+  const snap = await docRef.get();
+  if (!snap.exists) {
     return sendError(res, { code: 'not_found', message: 'User profile not found' });
   }
-  const now = getNowIso();
-  const payload = req.body ?? {};
-  const updated: UserDoc = {
-    ...existing,
-    ...payload,
-    id: uid,
-    updatedAt: now,
-  };
-  usersMem.set(uid, updated);
-  return res.status(200).json({ user: updated });
+  const payload = (req.body ?? {}) as Record<string, unknown>;
+  const now = FieldValue.serverTimestamp();
+  await docRef.set({ ...payload, id: uid, updatedAt: now }, { merge: true });
+  const fresh = await docRef.get();
+  return res.status(200).json({ user: fresh.data() });
 });
 
 // POST /v1/users.me/delete — пометка на удаление (асинхронная задача заглушка)
