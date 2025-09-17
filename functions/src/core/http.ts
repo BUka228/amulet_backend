@@ -257,7 +257,35 @@ export function idempotencyMiddleware(ttlSec = 3600) {
           }
         }
         // Пытаемся поставить маркер обработки, чтобы конкуренты ждали/получали кеш
-        await redisClient.set(`idem:${cacheKey}`, JSON.stringify({ processing: true, ts: now }), 'NX', ttlSec);
+        const setRes = await redisClient.set(
+          `idem:${cacheKey}`,
+          JSON.stringify({ processing: true, ts: now }),
+          'NX',
+          ttlSec
+        );
+
+        if (setRes !== 'OK') {
+          // Мы проиграли гонку. Подождём коротко, вдруг уже готов итог
+          const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+          for (let i = 0; i < 5; i++) {
+            const again = await redisClient.get(`idem:${cacheKey}`);
+            if (again) {
+              try {
+                const v = JSON.parse(again) as { status?: number; body?: unknown; processing?: boolean };
+                if (typeof v.status === 'number') {
+                  res.status(v.status).json(v.body as Record<string, unknown>);
+                  return;
+                }
+              } catch {
+                // ignore
+              }
+            }
+            await sleep(50);
+          }
+          // Результат ещё не готов — попросим клиента повторить позже
+          res.setHeader('Retry-After', '1');
+          return sendError(res, { code: 'failed_precondition', message: 'Request is being processed, retry later' });
+        }
 
         const originalJson = res.json.bind(res);
         (res as Response & { json: (body: unknown) => Response }).json = (body: unknown) => {
