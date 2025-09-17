@@ -3,24 +3,15 @@
  */
 
 import { onRequest } from 'firebase-functions/https';
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response } from 'express';
 import { authenticateToken, verifyAppCheck } from '../core/auth';
-import * as logger from 'firebase-functions/logger';
+import { applyBaseMiddlewares, errorHandler } from '../core/http';
+// no-op
 
 const app = express();
 
-// Middleware для парсинга JSON
-app.use(express.json());
-
-// Middleware для логирования запросов
-app.use((req: Request, res: Response, next: NextFunction) => {
-  logger.info('Request received', {
-    method: req.method,
-    path: req.path,
-    requestId: req.headers['x-request-id']
-  });
-  next();
-});
+// Базовый набор общих middleware (request-id, логирование, CORS, JSON, ETag, rate-limit, идемпотентность)
+applyBaseMiddlewares(app);
 
 // Публичный endpoint (не требует аутентификации)
 app.get('/public', (req: Request, res: Response) => {
@@ -93,19 +84,8 @@ app.use('*', (req: Request, res: Response) => {
   });
 });
 
-// Обработчик ошибок (должен быть последним)
-app.use((err: Error, req: express.Request, res: express.Response) => {
-  logger.error('Unhandled error', {
-    error: err.message,
-    stack: err.stack,
-    requestId: req.headers['x-request-id']
-  });
-  
-  res.status(500).json({
-    code: 'internal',
-    message: 'Internal server error'
-  });
-});
+// Единый обработчик ошибок (последним)
+app.use(errorHandler());
 
 // Экспорт Cloud Function
 export const api = onRequest(app);
