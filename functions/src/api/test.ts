@@ -3,11 +3,10 @@
  */
 
 import { onRequest } from 'firebase-functions/https';
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { authenticateToken, verifyAppCheck } from '../core/auth';
 import { applyBaseMiddlewares, errorHandler } from '../core/http';
 import { usersRouter } from './users';
-import { Request, Response, NextFunction } from 'express';
 // no-op
 
 const app = express();
@@ -21,7 +20,7 @@ if (process.env.NODE_ENV === 'test') {
     const testUid = (req.headers['x-test-uid'] as string) || '';
     if (!req.auth && testUid) {
       // Эмулируем аутентификацию тестового пользователя только при наличии X-Test-Uid
-      (req as any).auth = {
+      (req as unknown as { auth: unknown }).auth = {
         user: {
           uid: testUid,
           email: 'test@example.com',
