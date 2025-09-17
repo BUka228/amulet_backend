@@ -6,6 +6,7 @@ import { onRequest } from 'firebase-functions/https';
 import express, { Request, Response } from 'express';
 import { authenticateToken, verifyAppCheck } from '../core/auth';
 import { applyBaseMiddlewares, errorHandler } from '../core/http';
+import { usersRouter } from './users';
 // no-op
 
 const app = express();
@@ -20,6 +21,9 @@ app.get('/public', (req: Request, res: Response) => {
     timestamp: new Date().toISOString()
   });
 });
+
+// Версионированный префикс /v1
+app.use('/v1', usersRouter);
 
 // Защищенный endpoint (требует аутентификации)
 app.get('/protected', authenticateToken(), (req: Request, res: Response) => {
