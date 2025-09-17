@@ -7,12 +7,38 @@ import express, { Request, Response } from 'express';
 import { authenticateToken, verifyAppCheck } from '../core/auth';
 import { applyBaseMiddlewares, errorHandler } from '../core/http';
 import { usersRouter } from './users';
+import { Request, Response, NextFunction } from 'express';
 // no-op
 
 const app = express();
 
 // Базовый набор общих middleware (request-id, логирование, CORS, JSON, ETag, rate-limit, идемпотентность)
 applyBaseMiddlewares(app);
+
+// Тестовый мидлварь для эмуляции аутентификации
+if (process.env.NODE_ENV === 'test') {
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    const testUid = (req.headers['x-test-uid'] as string) || '';
+    if (!req.auth && testUid) {
+      // Эмулируем аутентификацию тестового пользователя только при наличии X-Test-Uid
+      (req as any).auth = {
+        user: {
+          uid: testUid,
+          email: 'test@example.com',
+          displayName: 'Test User',
+          photoURL: '',
+          emailVerified: true,
+          disabled: false,
+          metadata: {},
+          customClaims: {}
+        },
+        token: 'test-token',
+        isAuthenticated: true
+      };
+    }
+    next();
+  });
+}
 
 // Публичный endpoint (не требует аутентификации)
 app.get('/public', (req: Request, res: Response) => {
