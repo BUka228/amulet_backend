@@ -11,6 +11,8 @@ import { usersRouter } from './users';
 import { devicesRouter } from './devices';
 import { hugsRouter } from './hugs';
 import { pairsRouter } from './pairs';
+import { practicesRouter } from './practices';
+import { patternsRouter } from './patterns';
 // no-op
 
 const app = express();
@@ -59,6 +61,8 @@ app.use('/v1', usersRouter);
 app.use('/v1', devicesRouter);
 app.use('/v1', hugsRouter);
 app.use('/v1', pairsRouter);
+app.use('/v1', practicesRouter);
+app.use('/v1', patternsRouter);
 
 // Защищенный endpoint (требует аутентификации)
 app.get('/protected', authenticateToken(), (req: Request, res: Response) => {
