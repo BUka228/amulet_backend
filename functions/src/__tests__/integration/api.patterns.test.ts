@@ -13,6 +13,7 @@ describe('Integration: /v1/patterns', () => {
       db.collection('users').doc(uid).set({ id: uid, createdAt: now }),
       db.collection('devices').doc('d1').set({ id: 'd1', ownerId: uid, hardwareVersion: 100, createdAt: now }),
       db.collection('patterns').doc('pub1').set({ id: 'pub1', public: true, kind: 'light', hardwareVersion: 200, reviewStatus: 'approved', createdAt: now, updatedAt: now, title: 'Северное сияние' }),
+      db.collection('patterns').doc('pend1').set({ id: 'pend1', public: true, kind: 'light', hardwareVersion: 200, reviewStatus: 'pending', createdAt: now, updatedAt: now, title: 'Черновик' }),
       db.collection('notificationTokens').doc('t1').set({ userId: uid, token: 'fcm-1', isActive: true }),
     ]);
   });
@@ -48,6 +49,10 @@ describe('Integration: /v1/patterns', () => {
       .query({ hardwareVersion: 200, kind: 'light' })
       .expect(200);
     expect(Array.isArray(res.body.items)).toBe(true);
+    // pending не должны вернуться в публичном списке
+    const ids = (res.body.items as any[]).map((i) => i.id);
+    expect(ids).toContain('pub1');
+    expect(ids).not.toContain('pend1');
   });
 
   test('GET /v1/patterns.mine lists own patterns', async () => {
@@ -105,6 +110,19 @@ describe('Integration: /v1/patterns', () => {
     expect(args.notification?.title).toBe('Новый паттерн');
     expect(args.data?.type).toBe('pattern.shared');
     sendMock.mockRestore();
+  });
+
+  test('POST /v1/patterns/:id/share blocks pending pattern sharing', async () => {
+    const recipientId = 'u_recipient2';
+    await Promise.all([
+      db.collection('users').doc(recipientId).set({ id: recipientId }),
+      db.collection('patterns').doc('p-pending').set({ id: 'p-pending', ownerId: uid, title: 'Черновик', public: false, kind: 'light', hardwareVersion: 200, reviewStatus: 'pending', createdAt: new Date(), updatedAt: new Date() }),
+    ]);
+    await request(app)
+      .post('/v1/patterns/p-pending/share')
+      .set('X-Test-Uid', uid)
+      .send({ toUserId: recipientId })
+      .expect(412); // failed_precondition
   });
 });
 

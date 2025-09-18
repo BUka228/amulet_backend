@@ -145,7 +145,7 @@ patternsRouter.get('/patterns.mine', async (req: Request, res: Response) => {
   }
 });
 
-// GET /v1/patterns — публичные паттерны (с фильтрами)
+// GET /v1/patterns — публичные паттерны (только approved) (с фильтрами)
 patternsRouter.get('/patterns', async (req: Request, res: Response) => {
   const uid = req.auth?.user.uid;
   if (!uid) return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
@@ -155,7 +155,10 @@ patternsRouter.get('/patterns', async (req: Request, res: Response) => {
     const kind = (req.query.kind as string) || '';
     const tags = (req.query.tags as string) || '';
 
-    let q = db.collection('patterns').where('public', '==', true).orderBy('createdAt', 'desc') as FirebaseFirestore.Query;
+    let q = db.collection('patterns')
+      .where('public', '==', true)
+      .where('reviewStatus', '==', 'approved')
+      .orderBy('createdAt', 'desc') as FirebaseFirestore.Query;
     if (hardwareVersion === 100 || hardwareVersion === 200) q = q.where('hardwareVersion', '==', hardwareVersion);
     if (kind) q = q.where('kind', '==', kind);
     if (tags) q = q.where('tags', 'array-contains', tags);
@@ -187,7 +190,12 @@ patternsRouter.get('/patterns/:id', async (req: Request, res: Response) => {
     if (!data) return sendError(res, { code: 'not_found', message: 'Pattern not found' });
     const isOwner = data['ownerId'] === uid;
     const isPublic = Boolean(data['public']);
-    if (!isOwner && !isPublic) return sendError(res, { code: 'permission_denied', message: 'Access denied' });
+    const isApproved = data['reviewStatus'] === 'approved';
+    if (!isOwner) {
+      if (!isPublic || !isApproved) {
+        return sendError(res, { code: 'permission_denied', message: 'Access denied' });
+      }
+    }
     return res.status(200).json({ pattern: data });
   } catch (error) {
     logger.error('Pattern get failed', { userId: uid, patternId: req.params.id, error: error instanceof Error ? error.message : 'Unknown error', requestId: req.headers['x-request-id'] });
@@ -234,7 +242,7 @@ patternsRouter.delete('/patterns/:id', async (req: Request, res: Response) => {
   }
 });
 
-// POST /v1/patterns/:id/share — поделиться
+// POST /v1/patterns/:id/share — поделиться (только approved)
 patternsRouter.post('/patterns/:id/share', validateBody('share'), async (req: Request, res: Response) => {
   const uid = req.auth?.user.uid;
   if (!uid) return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
@@ -242,8 +250,11 @@ patternsRouter.post('/patterns/:id/share', validateBody('share'), async (req: Re
     const ref = db.collection('patterns').doc(req.params.id);
     const snap = await ref.get();
     if (!snap.exists) return sendError(res, { code: 'not_found', message: 'Pattern not found' });
-    const data = snap.data() as { ownerId?: string; title?: string };
+    const data = snap.data() as { ownerId?: string; title?: string; reviewStatus?: string };
     if (data.ownerId !== uid) return sendError(res, { code: 'permission_denied', message: 'Access denied' });
+    if (data.reviewStatus !== 'approved') {
+      return sendError(res, { code: 'failed_precondition', message: 'Pattern sharing is not allowed until approved' });
+    }
 
     // Логика шаринга: в MVP — создаём запись в коллекции sharedPatterns
     const body = req.body as { toUserId?: string; pairId?: string };
