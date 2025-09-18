@@ -14,29 +14,84 @@ patternsRouter.use(
 );
 
 // Zod схемы (по упрощённой OpenAPI из doc)
+// Усиленная валидация spec: дискриминируемые элементы по полю type
+const elementBase = {
+  startTime: z.number().int().min(0),
+  duration: z.number().int().min(1),
+  intensity: z.number().min(0).max(1).optional(),
+  speed: z.number().min(0).max(10).optional(),
+};
+
+const elementGradient = z
+  .object({
+    type: z.literal('gradient'),
+    ...elementBase,
+    colors: z.array(z.string()).min(2),
+    direction: z.enum(['clockwise', 'counterclockwise', 'center', 'outward']).optional(),
+    leds: z.array(z.number().int().min(0)).optional(),
+  })
+  .strict();
+
+const elementPulse = z
+  .object({
+    type: z.literal('pulse'),
+    ...elementBase,
+    color: z.string(),
+  })
+  .strict();
+
+const elementBreathing = z
+  .object({
+    type: z.literal('breathing'),
+    ...elementBase,
+    color: z.string(),
+  })
+  .strict();
+
+const elementChase = z
+  .object({
+    type: z.literal('chase'),
+    ...elementBase,
+    color: z.string(),
+    leds: z.array(z.number().int().min(0)).optional(),
+  })
+  .strict();
+
+const elementColor = z
+  .object({
+    type: z.literal('color'),
+    ...elementBase,
+    color: z.string(),
+  })
+  .strict();
+
+const elementCustom = z
+  .object({
+    type: z.literal('custom'),
+    ...elementBase,
+    // custom допускает color или colors, но хотя бы одно
+    color: z.string().optional(),
+    colors: z.array(z.string()).min(1).optional(),
+  })
+  .strict()
+  .refine((v) => Boolean(v.color || (v.colors && v.colors.length > 0)), 'custom requires color or colors');
+
+const elementUnion = z.discriminatedUnion('type', [
+  elementGradient,
+  elementPulse,
+  elementBreathing,
+  elementChase,
+  elementColor,
+  elementCustom,
+]);
+
 const patternSpecSchema = z
   .object({
     type: z.enum(['breathing', 'pulse', 'rainbow', 'fire', 'gradient', 'chase', 'custom']),
     hardwareVersion: z.union([z.literal(100), z.literal(200)]),
     duration: z.number().int().min(1).max(10 * 60 * 1000),
     loop: z.boolean().optional(),
-    elements: z
-      .array(
-        z
-          .object({
-            type: z.string().min(1),
-            startTime: z.number().int().min(0),
-            duration: z.number().int().min(1),
-            color: z.string().optional(),
-            colors: z.array(z.string()).optional(),
-            intensity: z.number().min(0).max(1).optional(),
-            speed: z.number().min(0).max(10).optional(),
-            direction: z.enum(['clockwise', 'counterclockwise', 'center', 'outward']).optional(),
-            leds: z.array(z.number().int().min(0)).optional(),
-          })
-          .strict()
-      )
-      .min(1),
+    elements: z.array(elementUnion).min(1),
   })
   .strict();
 

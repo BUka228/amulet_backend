@@ -42,6 +42,47 @@ describe('Integration: /v1/patterns', () => {
     expect(res.body.pattern.ownerId).toBe(uid);
   });
 
+  test('spec validation: pulse requires color and gradient requires colors', async () => {
+    // pulse без color → 400
+    const badPulse = {
+      kind: 'light',
+      hardwareVersion: 200,
+      spec: {
+        type: 'pulse',
+        hardwareVersion: 200,
+        duration: 1000,
+        elements: [{ type: 'pulse', startTime: 0, duration: 500 }],
+      },
+    };
+    await request(app).post('/v1/patterns').set('X-Test-Uid', uid).send(badPulse).expect(400);
+
+    // gradient без colors → 400
+    const badGradient = {
+      kind: 'light',
+      hardwareVersion: 200,
+      spec: {
+        type: 'gradient',
+        hardwareVersion: 200,
+        duration: 1000,
+        elements: [{ type: 'gradient', startTime: 0, duration: 500 }],
+      },
+    };
+    await request(app).post('/v1/patterns').set('X-Test-Uid', uid).send(badGradient).expect(400);
+
+    // корректный pulse
+    const okPulse = {
+      kind: 'light',
+      hardwareVersion: 200,
+      spec: {
+        type: 'pulse',
+        hardwareVersion: 200,
+        duration: 1200,
+        elements: [{ type: 'pulse', startTime: 0, duration: 600, color: '#00FF00' }],
+      },
+    };
+    await request(app).post('/v1/patterns').set('X-Test-Uid', uid).send(okPulse).expect(201);
+  });
+
   test('GET /v1/patterns lists public patterns with filters', async () => {
     const res = await request(app)
       .get('/v1/patterns')
