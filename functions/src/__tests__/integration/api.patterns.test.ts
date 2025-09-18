@@ -12,7 +12,7 @@ describe('Integration: /v1/patterns', () => {
     await Promise.all([
       db.collection('users').doc(uid).set({ id: uid, createdAt: now }),
       db.collection('devices').doc('d1').set({ id: 'd1', ownerId: uid, hardwareVersion: 100, createdAt: now }),
-      db.collection('patterns').doc('pub1').set({ id: 'pub1', public: true, kind: 'light', hardwareVersion: 200, reviewStatus: 'approved', createdAt: now, updatedAt: now }),
+      db.collection('patterns').doc('pub1').set({ id: 'pub1', public: true, kind: 'light', hardwareVersion: 200, reviewStatus: 'approved', createdAt: now, updatedAt: now, title: 'Северное сияние' }),
       db.collection('notificationTokens').doc('t1').set({ userId: uid, token: 'fcm-1', isActive: true }),
     ]);
   });
@@ -81,6 +81,29 @@ describe('Integration: /v1/patterns', () => {
     expect(Array.isArray(args.tokens)).toBe(true);
     expect(args.data.type).toBe('pattern.preview');
     expect(() => JSON.parse(args.data.spec)).not.toThrow();
+    sendMock.mockRestore();
+  });
+
+  test('POST /v1/patterns/:id/share sends push to recipient', async () => {
+    const recipientId = 'u_recipient';
+    await Promise.all([
+      db.collection('users').doc(recipientId).set({ id: recipientId }),
+      db.collection('notificationTokens').doc('t2').set({ userId: recipientId, token: 'fcm-2', isActive: true }),
+      db.collection('patterns').doc('p-share').set({ id: 'p-share', ownerId: uid, title: 'Северное сияние', public: false, kind: 'light', hardwareVersion: 200, reviewStatus: 'approved', createdAt: new Date(), updatedAt: new Date() }),
+    ]);
+
+    const sendMock = jest.spyOn((admin as any).messaging.Messaging.prototype, 'sendEachForMulticast').mockResolvedValue({ successCount: 1, failureCount: 0, responses: [] } as any);
+
+    const res = await request(app)
+      .post('/v1/patterns/p-share/share')
+      .set('X-Test-Uid', uid)
+      .send({ toUserId: recipientId })
+      .expect(200);
+    expect(res.body).toHaveProperty('shared', true);
+    expect(sendMock).toHaveBeenCalled();
+    const args = (sendMock.mock.calls[0] || [])[0] as any;
+    expect(args.notification?.title).toBe('Новый паттерн');
+    expect(args.data?.type).toBe('pattern.shared');
     sendMock.mockRestore();
   });
 });

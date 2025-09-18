@@ -242,7 +242,7 @@ patternsRouter.post('/patterns/:id/share', validateBody('share'), async (req: Re
     const ref = db.collection('patterns').doc(req.params.id);
     const snap = await ref.get();
     if (!snap.exists) return sendError(res, { code: 'not_found', message: 'Pattern not found' });
-    const data = snap.data() as { ownerId?: string };
+    const data = snap.data() as { ownerId?: string; title?: string };
     if (data.ownerId !== uid) return sendError(res, { code: 'permission_denied', message: 'Access denied' });
 
     // Логика шаринга: в MVP — создаём запись в коллекции sharedPatterns
@@ -254,6 +254,33 @@ patternsRouter.post('/patterns/:id/share', validateBody('share'), async (req: Re
       pairId: body.pairId ?? null,
       createdAt: new Date(),
     });
+
+    // Если указан конкретный получатель — отправим FCM уведомление
+    if (body.toUserId) {
+      const tokensSnap = await db
+        .collection('notificationTokens')
+        .where('userId', '==', body.toUserId)
+        .where('isActive', '==', true)
+        .get();
+      const tokens = tokensSnap.docs
+        .map((d) => (d.data() as { token?: string }).token)
+        .filter(Boolean) as string[];
+      if (tokens.length > 0) {
+        await getMessaging().sendEachForMulticast({
+          tokens,
+          notification: {
+            title: 'Новый паттерн',
+            body: `Пользователь поделился с вами паттерном "${data.title ?? 'Новый паттерн'}"`,
+          },
+          data: {
+            type: 'pattern.shared',
+            patternId: req.params.id,
+            fromUserId: uid,
+            title: data.title ?? '',
+          },
+        });
+      }
+    }
     return res.status(200).json({ shared: true });
   } catch (error) {
     logger.error('Pattern share failed', { userId: uid, patternId: req.params.id, error: error instanceof Error ? error.message : 'Unknown error', requestId: req.headers['x-request-id'] });
