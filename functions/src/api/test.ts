@@ -10,6 +10,7 @@ import { i18nMiddleware } from '../core/i18n';
 import { usersRouter } from './users';
 import { devicesRouter } from './devices';
 import { hugsRouter } from './hugs';
+import { pairsRouter } from './pairs';
 // no-op
 
 const app = express();
@@ -57,6 +58,7 @@ app.get('/public', (req: Request, res: Response) => {
 app.use('/v1', usersRouter);
 app.use('/v1', devicesRouter);
 app.use('/v1', hugsRouter);
+app.use('/v1', pairsRouter);
 
 // Защищенный endpoint (требует аутентификации)
 app.get('/protected', authenticateToken(), (req: Request, res: Response) => {
