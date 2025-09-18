@@ -15,6 +15,36 @@ export interface DeleteUserJob {
   priority: 'high' | 'normal' | 'low';
 }
 
+// Определяем, является ли ошибка временной (подходит для повторной попытки)
+function isTransientError(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  // Firestore / network transient patterns
+  const transientSubstrings = [
+    'deadline exceeded',
+    'unavailable',
+    'aborted',
+    'internal',
+    'resource exhausted',
+    'socket hang up',
+    'etimedout',
+    'econnreset',
+    'service unavailable',
+    'temporarily unavailable',
+  ];
+  if (transientSubstrings.some((s) => message.includes(s))) return true;
+
+  // Firestore error codes when available
+  const code = (error as { code?: string }).code?.toLowerCase();
+  const transientCodes = new Set([
+    'aborted',
+    'deadline-exceeded',
+    'unavailable',
+    'internal',
+    'resource-exhausted',
+  ]);
+  return code ? transientCodes.has(code) : false;
+}
+
 /**
  * Анонимизация данных пользователя вместо полного удаления
  * Сохраняет структуру данных для аналитики, но удаляет PII
@@ -46,7 +76,7 @@ async function anonymizeUserData(userId: string): Promise<void> {
           delete updates[key];
         }
       }
-      batch.update(userRef, updates);
+      batch.update(userRef, updates as unknown as FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData>);
     }
 
     // 2. Анонимизация устройств пользователя
@@ -284,25 +314,32 @@ export const processUserDeletion = onMessagePublished({
     });
 
   } catch (error) {
-    logger.error('User deletion job failed', { 
+    const transient = isTransientError(error);
+    logger.error('User deletion job error', { 
       error: error instanceof Error ? error.message : 'Unknown error',
-      jobId: event.data.message?.messageId
+      jobId: event.data.message?.messageId,
+      transient
     });
 
-    // Обновляем статус задачи как неудачную
-    try {
-      const jobData = JSON.parse(Buffer.from(event.data.message.data, 'base64').toString()) as DeleteUserJob;
-      await db.collection('deletionJobs').doc(jobData.jobId).set({
-        status: 'failed',
-        failedAt: FieldValue.serverTimestamp(),
-        error: error instanceof Error ? error.message : 'Unknown error'
-      }, { merge: true });
-    } catch (updateError) {
-      logger.error('Failed to update job status', { 
-        error: updateError instanceof Error ? updateError.message : 'Unknown error'
-      });
+    if (transient) {
+      // Ничего не меняем в статусе. Бросаем ошибку, чтобы Pub/Sub повторил задачу.
+      throw error;
+    } else {
+      // Фатальная ошибка: фиксируем как failed и НЕ бросаем ошибку, чтобы не было повторов
+      try {
+        const jobData = JSON.parse(Buffer.from(event.data.message.data, 'base64').toString()) as DeleteUserJob;
+        await db.collection('deletionJobs').doc(jobData.jobId).set({
+          status: 'failed',
+          failedAt: FieldValue.serverTimestamp(),
+          error: error instanceof Error ? error.message : 'Unknown error'
+        }, { merge: true });
+      } catch (updateError) {
+        logger.error('Failed to update job status', { 
+          error: updateError instanceof Error ? updateError.message : 'Unknown error'
+        });
+      }
+      // не бросаем, чтобы подтвердить обработку и прекратить ретраи
+      return;
     }
-
-    throw error;
   }
 });
