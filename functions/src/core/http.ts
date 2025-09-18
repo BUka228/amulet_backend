@@ -12,37 +12,10 @@
 import crypto from 'crypto';
 import express, { Request, Response, NextFunction } from 'express';
 import * as logger from 'firebase-functions/logger';
+import { db } from './firebase';
+import { FieldValue } from 'firebase-admin/firestore';
 
-// --- Redis (Cloud Memorystore) lazy client ---
-type RedisClient = {
-  incr: (key: string) => Promise<number>;
-  expire: (key: string, seconds: number) => Promise<number>;
-  get: (key: string) => Promise<string | null>;
-  set: (key: string, value: string, mode?: string, duration?: number) => Promise<'OK' | null>;
-};
-
-let redis: RedisClient | null = null;
-
-function shouldUseRedis(): boolean {
-  if (process.env.NODE_ENV === 'test') return false;
-  if (process.env.USE_INMEMORY === 'true') return false;
-  return Boolean(process.env.REDIS_URL || process.env.REDIS_HOST);
-}
-
-async function getRedis(): Promise<RedisClient | null> {
-  if (!shouldUseRedis()) return null;
-  if (redis) return redis;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const IORedis = require('ioredis');
-  const url = process.env.REDIS_URL;
-  const host = process.env.REDIS_HOST;
-  const port = process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : 6379;
-  const tls = process.env.REDIS_TLS === 'true' ? { rejectUnauthorized: false } : undefined;
-  const client = url ? new IORedis(url, { tls }) : new IORedis(port, host, { tls });
-
-  redis = client;
-  return redis;
-}
+// Redis client removed: using Firestore for distributed coordination
 
 type ErrorCode =
   | 'unauthenticated'
@@ -176,47 +149,51 @@ interface Counter { count: number; resetAt: number }
 const rateStore: Map<string, Counter> = new Map();
 
 export function rateLimitMiddleware(limit = 60, windowSec = 60) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    void (async () => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
       const forwardedFor = (req.headers['x-forwarded-for'] as string) || '';
       const clientIp = forwardedFor.split(',')[0]?.trim() || req.ip || 'unknown';
-      const keyIp = clientIp;
-      const now = Date.now();
-      const windowMs = windowSec * 1000;
-      const redisClient = await getRedis();
+      const key = (req as unknown as { auth?: { user?: { uid?: string } } }).auth?.user?.uid || clientIp;
 
-      let current = 0;
-      let resetAt = now + windowMs;
+      const now = new Date();
+      const rateLimitRef = db.collection('rateLimits').doc(key);
 
-      if (redisClient) {
-        const bucketKey = `rl:${keyIp}:${Math.floor(now / windowMs)}`;
-        current = await redisClient.incr(bucketKey);
-        if (current === 1) {
-          await redisClient.expire(bucketKey, windowSec);
+      const { remaining, resetSeconds } = await db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(rateLimitRef);
+        const expiresAt = new Date(now.getTime() + windowSec * 1000);
+        if (!snap.exists) {
+          transaction.set(rateLimitRef, { count: 1, expiresAt });
+          return { remaining: limit - 1, resetSeconds: windowSec };
         }
-        // вычислим реальный reset по границе окна
-        resetAt = (Math.floor(now / windowMs) + 1) * windowMs;
-      } else {
-        let ctr = rateStore.get(keyIp);
-        if (!ctr || now > ctr.resetAt) {
-          ctr = { count: 0, resetAt: now + windowMs };
-          rateStore.set(keyIp, ctr);
+        const data = snap.data() as { count?: number; expiresAt?: FirebaseFirestore.Timestamp } | undefined;
+        const existingExpiresDate = data?.expiresAt?.toDate();
+        if (!existingExpiresDate || existingExpiresDate < now) {
+          transaction.set(rateLimitRef, { count: 1, expiresAt });
+          return { remaining: limit - 1, resetSeconds: windowSec };
         }
-        ctr.count += 1;
-        current = ctr.count;
-        resetAt = ctr.resetAt;
-      }
+        const countValue = data?.count;
+        const currentCount = typeof countValue === 'number' ? countValue : 0;
+        if (currentCount >= limit) {
+          const secondsLeft = Math.max(1, Math.ceil((existingExpiresDate.getTime() - now.getTime()) / 1000));
+          return { remaining: -1, resetSeconds: secondsLeft };
+        }
+        transaction.update(rateLimitRef, { count: FieldValue.increment(1) });
+        const secondsLeft = Math.max(1, Math.ceil((existingExpiresDate.getTime() - now.getTime()) / 1000));
+        return { remaining: limit - (currentCount + 1), resetSeconds: secondsLeft };
+      });
 
-      const remaining = Math.max(0, limit - current);
       res.setHeader('X-RateLimit-Limit', String(limit));
       res.setHeader('X-RateLimit-Remaining', String(Math.max(0, remaining)));
-      res.setHeader('X-RateLimit-Reset', String(Math.ceil((resetAt - now) / 1000)));
-      if (current > limit) {
-        res.setHeader('Retry-After', String(Math.ceil((resetAt - now) / 1000)));
+      res.setHeader('Retry-After', String(resetSeconds));
+
+      if (remaining < 0) {
         return sendError(res, { code: 'rate_limit_exceeded', message: 'Too many requests' });
       }
       next();
-    })();
+    } catch (error) {
+      logger.error('Rate limit check failed', { error });
+      next();
+    }
   };
 }
 
@@ -234,85 +211,75 @@ export function __resetIdempotencyStoreForTests(): void {
 }
 
 export function idempotencyMiddleware(ttlSec = 3600) {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     const method = req.method.toUpperCase();
     if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) return next();
 
     const keyHeader = (req.headers['idempotency-key'] as string) || '';
     if (!keyHeader) return next();
 
-    // Ключ учитывает маршрут и тело
-    const bodyHash = crypto.createHash('sha1').update(JSON.stringify(req.body || {})).digest('hex');
-    const cacheKey = `${keyHeader}:${method}:${req.path}:${bodyHash}`;
-    void (async () => {
-      const now = Date.now();
-      const redisClient = await getRedis();
-      if (redisClient) {
-        const cached = await redisClient.get(`idem:${cacheKey}`);
-        if (cached) {
-          try {
-            const value = JSON.parse(cached) as { status: number; body: unknown };
-            res.status(value.status).json(value.body as Record<string, unknown>);
-            return;
-          } catch {
-            // ignore parse error
+    // Ключ формируем из заголовка; тело может меняться, но ключ определяет идемпотентность
+    const keyHash = crypto.createHash('sha256').update(keyHeader).digest('hex');
+    const idempotencyRef = db.collection('idempotencyKeys').doc(keyHash);
+    const now = new Date();
+
+    try {
+      const result = await db.runTransaction(async (transaction) => {
+        const doc = await transaction.get(idempotencyRef);
+        if (doc.exists) {
+          const data = doc.data() as {
+            status?: string;
+            responseBody?: string;
+            responseStatus?: number;
+            expiresAt?: FirebaseFirestore.Timestamp;
+          };
+          const existingExpiresDate = data?.expiresAt?.toDate();
+          if (existingExpiresDate && existingExpiresDate < now) {
+            transaction.delete(idempotencyRef);
+            return 'proceed' as const;
+          }
+          if (data?.status === 'pending') {
+            return 'retry' as const;
+          }
+          if (data?.status === 'completed' && typeof data.responseStatus === 'number' && typeof data.responseBody === 'string') {
+            return { status: data.responseStatus, body: JSON.parse(data.responseBody) } as const;
           }
         }
-        // Пытаемся поставить маркер обработки, чтобы конкуренты ждали/получали кеш
-        const setRes = await redisClient.set(
-          `idem:${cacheKey}`,
-          JSON.stringify({ processing: true, ts: now }),
-          'NX',
-          ttlSec
-        );
+        transaction.set(idempotencyRef, {
+          status: 'pending',
+          createdAt: FieldValue.serverTimestamp(),
+          expiresAt: new Date(now.getTime() + ttlSec * 1000),
+        });
+        return 'proceed' as const;
+      });
 
-        if (setRes !== 'OK') {
-          // Мы проиграли гонку. Подождём коротко, вдруг уже готов итог
-          const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-          for (let i = 0; i < 5; i++) {
-            const again = await redisClient.get(`idem:${cacheKey}`);
-            if (again) {
-              try {
-                const v = JSON.parse(again) as { status?: number; body?: unknown; processing?: boolean };
-                if (typeof v.status === 'number') {
-                  res.status(v.status).json(v.body as Record<string, unknown>);
-                  return;
-                }
-              } catch {
-                // ignore
-              }
-            }
-            await sleep(50);
-          }
-          // Результат ещё не готов — попросим клиента повторить позже
-          res.setHeader('Retry-After', '1');
-          return sendError(res, { code: 'failed_precondition', message: 'Request is being processed, retry later' });
-        }
-
-        const originalJson = res.json.bind(res);
-        (res as Response & { json: (body: unknown) => Response }).json = (body: unknown) => {
-          const status = res.statusCode || 200;
-          void redisClient.set(`idem:${cacheKey}`, JSON.stringify({ status, body }), 'EX', ttlSec);
-          return originalJson(body as Record<string, unknown>);
-        };
-        next();
-        return;
+      if (result === 'retry') {
+        res.setHeader('Retry-After', '1');
+        return sendError(res, { code: 'failed_precondition', message: 'Request is being processed, retry later' });
       }
 
-      // Fallback: in-memory (для тестов/локально)
-      const existing = idemStore.get(cacheKey);
-      if (existing && now - existing.storedAt < existing.ttlMs) {
-        res.status(existing.status).json(existing.body as Record<string, unknown>);
-        return;
+      if (typeof result === 'object') {
+        return res.status(result.status).json(result.body as Record<string, unknown>);
       }
+
       const originalJson = res.json.bind(res);
       (res as Response & { json: (body: unknown) => Response }).json = (body: unknown) => {
-        const status = res.statusCode || 200;
-        idemStore.set(cacheKey, { status, body, storedAt: now, ttlMs: ttlSec * 1000 });
+        const responseToSave = {
+          status: 'completed',
+          responseStatus: res.statusCode || 200,
+          responseBody: JSON.stringify(body),
+          completedAt: FieldValue.serverTimestamp(),
+        };
+        void idempotencyRef.set(responseToSave, { merge: true }).catch((err) => {
+          logger.error('Failed to save idempotency response', { key: keyHash, error: err });
+        });
         return originalJson(body as Record<string, unknown>);
       };
       next();
-    })();
+    } catch (error) {
+      logger.error('Idempotency check failed', { error });
+      next();
+    }
   };
 }
 
