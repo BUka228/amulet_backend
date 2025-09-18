@@ -5,6 +5,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../core/firebase';
 import { z } from 'zod';
 import * as logger from 'firebase-functions/logger';
+import crypto from 'crypto';
 
 // Схемы валидации
 const claimSchema = z.object({
@@ -65,6 +66,10 @@ function omitUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
   return out;
 }
 
+function sha256Hex(value: string): string {
+  return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
 // POST /v1/devices.claim — привязка устройства по serial+claimToken
 devicesRouter.post('/devices.claim', validateBody('claim'), async (req: Request, res: Response) => {
   const uid = req.auth?.user.uid;
@@ -74,6 +79,22 @@ devicesRouter.post('/devices.claim', validateBody('claim'), async (req: Request,
 
   const { serial, claimToken, name } = req.body as { serial: string; claimToken: string; name?: string };
   try {
+    // 1) Валидируем одноразовый токен (claimTokens: serial + tokenHash + expiresAt + used:false)
+    const tokenHash = sha256Hex(claimToken);
+    const nowTs = new Date();
+    const tokenSnap = await db
+      .collection('claimTokens')
+      .where('serial', '==', serial)
+      .where('tokenHash', '==', tokenHash)
+      .where('used', '==', false)
+      .where('expiresAt', '>', nowTs)
+      .limit(1)
+      .get();
+    if (tokenSnap.empty) {
+      return sendError(res, { code: 'permission_denied', message: 'Invalid or expired claim token' });
+    }
+    const tokenDocRef = tokenSnap.docs[0].ref;
+
     // Пытаемся найти существующее устройство по serial
     const existingSnap = await db.collection('devices').where('serial', '==', serial).limit(1).get();
     const now = FieldValue.serverTimestamp();
@@ -82,14 +103,8 @@ devicesRouter.post('/devices.claim', validateBody('claim'), async (req: Request,
       const doc = existingSnap.docs[0];
       const data = doc.data() as Record<string, unknown>;
       const ownerId = (data['ownerId'] as string) || '';
-
-      // Простейшая проверка claimToken, если поле присутствует
-      const storedToken = (data['claimToken'] as string | undefined) || undefined;
       if (ownerId && ownerId !== uid) {
         return sendError(res, { code: 'permission_denied', message: 'Device already claimed by another user' });
-      }
-      if (storedToken && storedToken !== claimToken) {
-        return sendError(res, { code: 'permission_denied', message: 'Invalid claim token' });
       }
 
       await doc.ref.set(
@@ -98,10 +113,12 @@ devicesRouter.post('/devices.claim', validateBody('claim'), async (req: Request,
           name: name ?? (data['name'] as string | undefined) ?? 'My Amulet',
           pairedAt: now,
           updatedAt: now,
-          claimToken: undefined, // очищаем, если был
         }),
         { merge: true }
       );
+      // Маркируем токен использованным (и можем удалить)
+      await tokenDocRef.set({ used: true, usedAt: now }, { merge: true });
+      await tokenDocRef.delete().catch(() => undefined);
       const fresh = await doc.ref.get();
       return res.status(200).json({ device: fresh.data() });
     }
@@ -122,10 +139,11 @@ devicesRouter.post('/devices.claim', validateBody('claim'), async (req: Request,
         settings: { brightness: 50, haptics: 50, gestures: {} },
         createdAt: now,
         updatedAt: now,
-        // временно сохраняем claimToken для проверки повторов, очищаем при обновлениях
-        claimToken,
       })
     );
+    // Маркируем токен использованным и удаляем
+    await tokenDocRef.set({ used: true, usedAt: now }, { merge: true });
+    await tokenDocRef.delete().catch(() => undefined);
     const fresh = await docRef.get();
     return res.status(200).json({ device: fresh.data() });
   } catch (error) {
