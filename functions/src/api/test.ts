@@ -13,6 +13,7 @@ import { hugsRouter } from './hugs';
 import { pairsRouter } from './pairs';
 import { practicesRouter } from './practices';
 import { patternsRouter } from './patterns';
+import { adminRouter } from './admin';
 // no-op
 
 const app = express();
@@ -27,6 +28,7 @@ app.use(i18nMiddleware());
 if (process.env.NODE_ENV === 'test') {
   app.use((req: Request, _res: Response, next: NextFunction) => {
     const testUid = (req.headers['x-test-uid'] as string) || '';
+    const testAdmin = (req.headers['x-test-admin'] as string) || '';
     if (!req.auth && testUid) {
       // Эмулируем аутентификацию тестового пользователя только при наличии X-Test-Uid
       (req as unknown as { auth: unknown }).auth = {
@@ -38,7 +40,7 @@ if (process.env.NODE_ENV === 'test') {
           emailVerified: true,
           disabled: false,
           metadata: {},
-          customClaims: {}
+          customClaims: testAdmin === '1' ? { admin: true } : {}
         },
         token: 'test-token',
         isAuthenticated: true
@@ -63,6 +65,7 @@ app.use('/v1', hugsRouter);
 app.use('/v1', pairsRouter);
 app.use('/v1', practicesRouter);
 app.use('/v1', patternsRouter);
+app.use('/v1', adminRouter);
 
 // Защищенный endpoint (требует аутентификации)
 app.get('/protected', authenticateToken(), (req: Request, res: Response) => {
