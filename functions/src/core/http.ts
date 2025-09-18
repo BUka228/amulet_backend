@@ -178,7 +178,9 @@ const rateStore: Map<string, Counter> = new Map();
 export function rateLimitMiddleware(limit = 60, windowSec = 60) {
   return (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
-      const keyIp = req.ip || 'unknown';
+      const forwardedFor = (req.headers['x-forwarded-for'] as string) || '';
+      const clientIp = forwardedFor.split(',')[0]?.trim() || req.ip || 'unknown';
+      const keyIp = clientIp;
       const now = Date.now();
       const windowMs = windowSec * 1000;
       const redisClient = await getRedis();

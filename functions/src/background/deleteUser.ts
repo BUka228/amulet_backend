@@ -280,7 +280,7 @@ export const processUserDeletion = onMessagePublished({
     logger.info('User deletion job completed', { 
       jobId: jobData.jobId, 
       userId: jobData.userId,
-      strategy: deletionStrategy
+      strategy: (process.env.USER_DELETION_STRATEGY || 'anonymize')
     });
 
   } catch (error) {
