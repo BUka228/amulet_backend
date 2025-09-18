@@ -11,8 +11,8 @@ describe('Integration: /v1/practices', () => {
     const col = db.collection('practices');
     const now = new Date();
     await Promise.all([
-      col.doc('p1').set({ id: 'p1', type: 'breath', title: 'Square breathing', durationSec: 300, patternId: 'pat1', createdAt: now, locales: { 'en': { title: 'Square' } } }),
-      col.doc('p2').set({ id: 'p2', type: 'meditation', title: 'Calm mind', durationSec: 600, patternId: 'pat2', createdAt: now, locales: { 'ru': { title: 'Спокойствие' } } }),
+      col.doc('p1').set({ id: 'p1', type: 'breath', title: 'Square breathing', durationSec: 300, patternId: 'pat1', createdAt: now, supportedLocales: ['en'], locales: { 'en': { title: 'Square' } } }),
+      col.doc('p2').set({ id: 'p2', type: 'meditation', title: 'Calm mind', durationSec: 600, patternId: 'pat2', createdAt: now, supportedLocales: ['ru'], locales: { 'ru': { title: 'Спокойствие' } } }),
     ]);
   });
 

@@ -33,7 +33,7 @@ practicesRouter.get('/practices', async (req: Request, res: Response) => {
       .orderBy('createdAt', 'desc')
       .orderBy('id', 'desc') as FirebaseFirestore.Query;
     if (type) q = q.where('type', '==', type);
-    if (lang) q = q.where(`locales.${lang}.title`, '!=', null);
+    if (lang) q = q.where('supportedLocales', 'array-contains', lang);
 
     if (cursor) {
       const [tsStr, id] = cursor.split('_', 2);
