@@ -2,7 +2,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import { authenticateToken } from '../core/auth';
 import { sendError } from '../core/http';
 import { FieldValue } from 'firebase-admin/firestore';
-import { db, messaging } from '../core/firebase';
+import { db } from '../core/firebase';
+import { getMessaging } from 'firebase-admin/messaging';
 import { z } from 'zod';
 import * as logger from 'firebase-functions/logger';
 
@@ -124,9 +125,12 @@ hugsRouter.post('/hugs.send', validateBody('send'), async (req: Request, res: Re
         .where('userId', '==', toUserId)
         .where('isActive', '==', true)
         .get();
-      const tokens = tokensSnap.docs.map((d) => (d.data() as { token?: string }).token).filter(Boolean) as string[];
+      const tokens = tokensSnap.docs
+        .map((d) => (d.data() as { token?: string }).token)
+        .filter(Boolean)
+        .sort() as string[];
       if (tokens.length > 0) {
-        const response = await messaging.sendEachForMulticast({
+        const response = await getMessaging().sendEachForMulticast({
           tokens,
           notification: {
             title: 'You received a hug',
