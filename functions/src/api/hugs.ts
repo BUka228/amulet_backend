@@ -101,6 +101,11 @@ hugsRouter.post('/hugs.send', validateBody('send'), async (req: Request, res: Re
         return { error: { code: 'invalid_argument', message: 'Recipient is required' } } as const;
       }
 
+      // Запрет на отправку самому себе
+      if (computedToUserId === fromUserId) {
+        return { error: { code: 'failed_precondition', message: 'Cannot send hug to yourself' } } as const;
+      }
+
       const docData = {
         id: hugDocRef.id,
         fromUserId,

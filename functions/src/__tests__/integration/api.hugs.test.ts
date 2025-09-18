@@ -62,6 +62,38 @@ describe('Hugs API (/v1/hugs*)', () => {
     expect(res.body.delivered).toBe(true);
   });
 
+  it('Idempotency: repeated POST with same Idempotency-Key returns same hugId, no duplicates, cached faster', async () => {
+    const idem = 'idem-key-123';
+    const headers = { 'X-Test-Uid': alice.uid, 'Idempotency-Key': idem } as Record<string, string>;
+    const uniquePattern = 'pat_idem_check';
+    const body = { pairId: 'pair_ab', emotion: { color: '#FFAA00', patternId: uniquePattern } };
+
+    const t1 = Date.now();
+    const res1 = await agent.post('/v1/hugs.send').set(headers).send(body).expect(200);
+    const d1 = Date.now() - t1;
+
+    const t2 = Date.now();
+    const res2 = await agent.post('/v1/hugs.send').set(headers).send(body).expect(200);
+    const d2 = Date.now() - t2;
+
+    expect(res1.body.hugId).toBe(res2.body.hugId);
+    // Второй ответ должен быть быстрее (возврат из кеша идемпотентности)
+    expect(d2).toBeLessThanOrEqual(d1);
+
+    const db = admin.firestore();
+    const doc = await db.collection('hugs').doc(res1.body.hugId).get();
+    expect(doc.exists).toBe(true);
+
+    // Проверяем отсутствие дубликатов по уникальному признаку (patternId + пара)
+    const dupQuery = await db
+      .collection('hugs')
+      .where('fromUserId', '==', alice.uid)
+      .where('toUserId', '==', bob.uid)
+      .where('emotion.patternId', '==', uniquePattern)
+      .get();
+    expect(dupQuery.size).toBe(1);
+  });
+
   it('POST /v1/hugs.send supports inReplyToHugId and persists it', async () => {
     const first = await agent
       .post('/v1/hugs.send')
