@@ -72,57 +72,63 @@ hugsRouter.post('/hugs.send', validateBody('send'), async (req: Request, res: Re
       inReplyToHugId?: string;
     };
 
-    let toUserId = toUserIdRaw;
-    const pairId = pairIdRaw;
-
-    // Если указан pairId — валидируем пару и получателя, учитываем блокировки
-    if (pairId) {
-      const pairDoc = await db.collection('pairs').doc(pairId).get();
-      if (!pairDoc.exists) {
-        return sendError(res, { code: 'not_found', message: 'Pair not found' });
-      }
-      const pair = pairDoc.data() as { memberIds?: string[]; status?: string };
-      const members = Array.isArray(pair.memberIds) ? pair.memberIds : [];
-      if (!members.includes(fromUserId)) {
-        return sendError(res, { code: 'permission_denied', message: 'You are not a member of this pair' });
-      }
-      if (pair.status === 'blocked') {
-        return sendError(res, { code: 'failed_precondition', message: 'Pair is blocked' });
-      }
-      toUserId = members.find((m) => m !== fromUserId);
-      if (!toUserId) {
-        return sendError(res, { code: 'invalid_argument', message: 'Invalid pair members' });
-      }
-    }
-
-    // Если указали toUserId — можно дополнительно проверить, что существует активная пара
-    if (!toUserId) {
-      return sendError(res, { code: 'invalid_argument', message: 'Recipient is required' });
-    }
-
-    // Создаём документ «объятия»
+    // Транзакция: проверяем пару и создаём документ «объятия» атомарно
     const now = FieldValue.serverTimestamp();
-    const hugsRef = db.collection('hugs');
-    const hugDoc = hugsRef.doc();
-    const data = {
-      id: hugDoc.id,
-      fromUserId,
-      toUserId,
-      pairId: pairId || null,
-      emotion,
-      payload: payload ?? null,
-      inReplyToHugId: inReplyToHugId ?? null,
-      createdAt: now,
-      updatedAt: now,
-    } as unknown as Record<string, unknown>;
-    await hugDoc.set(data);
+    const hugDocRef = db.collection('hugs').doc();
+    const trxResult = await db.runTransaction(async (tx) => {
+      let computedToUserId = toUserIdRaw;
+      if (pairIdRaw) {
+        const pairRef = db.collection('pairs').doc(pairIdRaw);
+        const pairSnap = await tx.get(pairRef);
+        if (!pairSnap.exists) {
+          return { error: { code: 'not_found', message: 'Pair not found' } } as const;
+        }
+        const pair = pairSnap.data() as { memberIds?: string[]; status?: string };
+        const members = Array.isArray(pair.memberIds) ? pair.memberIds : [];
+        if (!members.includes(fromUserId)) {
+          return { error: { code: 'permission_denied', message: 'You are not a member of this pair' } } as const;
+        }
+        if (pair.status === 'blocked') {
+          return { error: { code: 'failed_precondition', message: 'Pair is blocked' } } as const;
+        }
+        computedToUserId = members.find((m) => m !== fromUserId);
+        if (!computedToUserId) {
+          return { error: { code: 'invalid_argument', message: 'Invalid pair members' } } as const;
+        }
+      }
+
+      if (!computedToUserId) {
+        return { error: { code: 'invalid_argument', message: 'Recipient is required' } } as const;
+      }
+
+      const docData = {
+        id: hugDocRef.id,
+        fromUserId,
+        toUserId: computedToUserId,
+        pairId: pairIdRaw || null,
+        emotion,
+        payload: payload ?? null,
+        inReplyToHugId: inReplyToHugId ?? null,
+        createdAt: now,
+        updatedAt: now,
+      } as unknown as Record<string, unknown>;
+      tx.set(hugDocRef, docData);
+      return { toUserId: computedToUserId } as const;
+    });
+
+    if ('error' in trxResult) {
+      const { code, message } = (trxResult as { error: { code: string; message: string } }).error;
+      return sendError(res, { code, message });
+    }
+
+    const resolvedToUserId = (trxResult as { toUserId: string }).toUserId;
 
     // Отправляем FCM пуш всем активным токенам получателя
     let delivered = false;
     try {
       const tokensSnap = await db
         .collection('notificationTokens')
-        .where('userId', '==', toUserId)
+        .where('userId', '==', resolvedToUserId)
         .where('isActive', '==', true)
         .get();
       const tokens = tokensSnap.docs
@@ -138,7 +144,7 @@ hugsRouter.post('/hugs.send', validateBody('send'), async (req: Request, res: Re
           },
           data: {
             type: 'hug.received',
-            hugId: hugDoc.id,
+            hugId: hugDocRef.id,
             fromUserId,
             color: emotion.color,
             patternId: emotion.patternId,
@@ -166,12 +172,12 @@ hugsRouter.post('/hugs.send', validateBody('send'), async (req: Request, res: Re
                 try {
                   const q = await db.collection('notificationTokens').where('token', '==', t).limit(50).get();
                   await Promise.all(q.docs.map((d) => d.ref.delete()));
-                  logger.info('Removed invalid FCM token', { token: t, userId: toUserId, hugId: hugDoc.id });
+                  logger.info('Removed invalid FCM token', { token: t, userId: resolvedToUserId, hugId: hugDocRef.id });
                 } catch (cleanupErr) {
                   logger.error('Failed to cleanup invalid FCM token', {
                     token: t,
-                    userId: toUserId,
-                    hugId: hugDoc.id,
+                    userId: resolvedToUserId,
+                    hugId: hugDocRef.id,
                     error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
                     requestId: req.headers['x-request-id'],
                   });
@@ -183,7 +189,7 @@ hugsRouter.post('/hugs.send', validateBody('send'), async (req: Request, res: Re
       }
     } catch (err) {
       logger.error('Failed to send FCM for hug', {
-        hugId: hugDoc.id,
+        hugId: hugDocRef.id,
         error: err instanceof Error ? err.message : String(err),
         requestId: req.headers['x-request-id'],
       });
@@ -191,10 +197,10 @@ hugsRouter.post('/hugs.send', validateBody('send'), async (req: Request, res: Re
 
     // Если доставили — обновляем deliveredAt
     if (delivered) {
-      await hugDoc.set({ deliveredAt: now }, { merge: true });
+      await hugDocRef.set({ deliveredAt: now }, { merge: true });
     }
 
-    return res.status(200).json({ hugId: hugDoc.id, delivered });
+    return res.status(200).json({ hugId: hugDocRef.id, delivered });
   } catch (error) {
     logger.error('Hug send failed', {
       fromUserId,
