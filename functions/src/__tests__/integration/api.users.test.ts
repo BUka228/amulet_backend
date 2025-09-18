@@ -1,8 +1,40 @@
 import request from 'supertest';
-import { app } from '../../api/test';
+import { describe, it, expect, beforeAll, beforeEach, jest } from '@jest/globals';
+import express, { Request, Response, NextFunction } from 'express';
 import * as admin from 'firebase-admin';
+import { applyBaseMiddlewares, errorHandler } from '../../core/http';
+import { i18nMiddleware } from '../../core/i18n';
+import usersRouter from '../../api/users';
+
+// Эмулируем Pub/Sub через мок, чтобы интеграционный тест не требовал реальные креды
+jest.mock('@google-cloud/pubsub', () => {
+  return {
+    PubSub: jest.fn().mockImplementation(() => ({
+      topic: jest.fn().mockReturnValue({
+        // Избегаем жесткой типизации mockResolvedValue<never>
+        publishMessage: async () => 'mocked-message-id'
+      })
+    }))
+  };
+});
 
 describe('Users API (/v1/users.me*)', () => {
+  const app = express();
+  applyBaseMiddlewares(app);
+  app.use(i18nMiddleware());
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    const testUid = (req.headers['x-test-uid'] as string) || '';
+    if (!req.auth && testUid) {
+      (req as unknown as { auth: unknown }).auth = {
+        user: { uid: testUid, customClaims: {} },
+        token: 'test-token',
+        isAuthenticated: true
+      };
+    }
+    next();
+  });
+  app.use('/v1', usersRouter);
+  app.use(errorHandler());
   const agent = request(app);
   const headers = { 'X-Test-Uid': 'u_integration_1' } as Record<string, string>;
 
@@ -11,6 +43,15 @@ describe('Users API (/v1/users.me*)', () => {
     if (admin.apps.length === 0) {
       admin.initializeApp({ projectId: 'amulet-test' });
     }
+  });
+
+  beforeEach(async () => {
+    // Firestore очищается глобальным setup между тестами → создаём профиль заново
+    await agent
+      .post('/v1/users.me.init')
+      .set(headers)
+      .send({ displayName: 'Alice', timezone: 'Europe/Moscow', language: 'ru-RU', consents: { marketing: false } })
+      .expect(200);
   });
 
   it('POST /v1/users.me.init creates or updates profile', async () => {

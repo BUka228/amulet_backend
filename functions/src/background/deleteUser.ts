@@ -8,7 +8,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../core/firebase';
 import * as logger from 'firebase-functions/logger';
 
-interface DeleteUserJob {
+export interface DeleteUserJob {
   jobId: string;
   userId: string;
   requestedAt: string;
@@ -28,19 +28,25 @@ async function anonymizeUserData(userId: string): Promise<void> {
     const userDoc = await userRef.get();
     
     if (userDoc.exists) {
-      batch.update(userRef, {
+      const updates: Record<string, unknown> = {
         displayName: 'Deleted User',
         avatarUrl: null,
         email: `deleted_${userId}@deleted.local`,
         isDeleted: true,
         deletedAt: FieldValue.serverTimestamp(),
-        // Сохраняем только необходимые поля для аналитики
+        // Сохраняем только необходимые поля для аналитики, без undefined
         createdAt: userDoc.data()?.createdAt,
-        timezone: userDoc.data()?.timezone, // для аналитики по регионам
-        language: userDoc.data()?.language, // для аналитики по языкам
-        pushTokens: [], // очищаем токены
-        consents: {} // очищаем согласия
-      });
+        timezone: userDoc.data()?.timezone,
+        language: userDoc.data()?.language,
+        pushTokens: [],
+        consents: {}
+      };
+      for (const key of Object.keys(updates)) {
+        if (updates[key] === undefined) {
+          delete updates[key];
+        }
+      }
+      batch.update(userRef, updates);
     }
 
     // 2. Анонимизация устройств пользователя
@@ -218,6 +224,45 @@ async function deleteUserData(userId: string): Promise<void> {
 /**
  * Cloud Function обработчик для удаления пользователя
  */
+export async function processUserDeletionHandler(jobData: DeleteUserJob): Promise<void> {
+  // Проверяем, не был ли пользователь уже удален
+  const userRef = db.collection('users').doc(jobData.userId);
+  const userDoc = await userRef.get();
+  
+  if (!userDoc.exists) {
+    logger.warn('User not found during deletion', { 
+      jobId: jobData.jobId, 
+      userId: jobData.userId 
+    });
+    return;
+  }
+
+  const userData = userDoc.data();
+  if (userData?.isDeleted) {
+    logger.warn('User already deleted', { 
+      jobId: jobData.jobId, 
+      userId: jobData.userId 
+    });
+    return;
+  }
+
+  // Выбираем стратегию удаления на основе настроек
+  const deletionStrategy = process.env.USER_DELETION_STRATEGY || 'anonymize';
+  
+  if (deletionStrategy === 'delete') {
+    await deleteUserData(jobData.userId);
+  } else {
+    await anonymizeUserData(jobData.userId);
+  }
+
+  // Обновляем статус задачи
+  await db.collection('deletionJobs').doc(jobData.jobId).set({
+    status: 'completed',
+    completedAt: FieldValue.serverTimestamp(),
+    userId: jobData.userId
+  }, { merge: true });
+}
+
 export const processUserDeletion = onMessagePublished({
   topic: 'user-deletion',
   region: 'us-central1'
@@ -230,43 +275,7 @@ export const processUserDeletion = onMessagePublished({
       jobId: jobData.jobId, 
       userId: jobData.userId 
     });
-
-    // Проверяем, не был ли пользователь уже удален
-    const userRef = db.collection('users').doc(jobData.userId);
-    const userDoc = await userRef.get();
-    
-    if (!userDoc.exists) {
-      logger.warn('User not found during deletion', { 
-        jobId: jobData.jobId, 
-        userId: jobData.userId 
-      });
-      return;
-    }
-
-    const userData = userDoc.data();
-    if (userData?.isDeleted) {
-      logger.warn('User already deleted', { 
-        jobId: jobData.jobId, 
-        userId: jobData.userId 
-      });
-      return;
-    }
-
-    // Выбираем стратегию удаления на основе настроек
-    const deletionStrategy = process.env.USER_DELETION_STRATEGY || 'anonymize';
-    
-    if (deletionStrategy === 'delete') {
-      await deleteUserData(jobData.userId);
-    } else {
-      await anonymizeUserData(jobData.userId);
-    }
-
-    // Обновляем статус задачи
-    await db.collection('deletionJobs').doc(jobData.jobId).set({
-      status: 'completed',
-      completedAt: FieldValue.serverTimestamp(),
-      userId: jobData.userId
-    }, { merge: true });
+    await processUserDeletionHandler(jobData);
 
     logger.info('User deletion job completed', { 
       jobId: jobData.jobId, 
