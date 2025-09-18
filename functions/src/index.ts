@@ -13,6 +13,9 @@ import * as logger from "firebase-functions/logger";
 // Импорт API функций
 import { api } from './api/test';
 
+// Импорт фоновых функций
+import { processUserDeletion } from './background/deleteUser';
+
 // For cost control, you can set the maximum number of containers that can be
 // running at the same time. This helps mitigate the impact of unexpected
 // traffic spikes by instead downgrading performance. This limit is a
@@ -27,5 +30,8 @@ setGlobalOptions({ maxInstances: 10 });
 
 // Экспорт API функций
 export { api };
+
+// Экспорт фоновых функций
+export { processUserDeletion };
 
 logger.info('Amulet Backend functions loaded', {structuredData: true});

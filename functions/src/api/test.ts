@@ -6,6 +6,7 @@ import { onRequest } from 'firebase-functions/https';
 import express, { Request, Response, NextFunction } from 'express';
 import { authenticateToken, verifyAppCheck } from '../core/auth';
 import { applyBaseMiddlewares, errorHandler } from '../core/http';
+import { i18nMiddleware } from '../core/i18n';
 import { usersRouter } from './users';
 // no-op
 
@@ -13,6 +14,9 @@ const app = express();
 
 // Базовый набор общих middleware (request-id, логирование, CORS, JSON, ETag, rate-limit, идемпотентность)
 applyBaseMiddlewares(app);
+
+// Middleware для интернационализации
+app.use(i18nMiddleware());
 
 // Тестовый мидлварь для эмуляции аутентификации
 if (process.env.NODE_ENV === 'test') {

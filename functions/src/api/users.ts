@@ -4,6 +4,8 @@ import { sendError } from '../core/http';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../core/firebase';
 import { z } from 'zod';
+import * as logger from 'firebase-functions/logger';
+import { getErrorMessage } from '../core/i18n';
 
 // Ленивый доступ к Firestore и коллекции users, чтобы переменные окружения из setup успевали примениться
 // getUsersCollection удалён: используем db.collection('users') напрямую
@@ -63,75 +65,187 @@ function omitUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
 usersRouter.post('/users.me.init', validateBody('init'), async (req: Request, res: Response) => {
   const uid = req.auth?.user.uid;
   if (!uid) {
-    return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
+    return sendError(res, { code: 'unauthenticated', message: getErrorMessage(req, 'auth.required') });
   }
 
-  const payload = omitUndefined((req.body ?? {}) as Record<string, unknown>);
-  const docRef = db.collection('users').doc(uid);
-  const snap = await docRef.get();
-  const now = FieldValue.serverTimestamp();
+  try {
+    const payload = omitUndefined((req.body ?? {}) as Record<string, unknown>);
+    const docRef = db.collection('users').doc(uid);
+    const snap = await docRef.get();
+    const now = FieldValue.serverTimestamp();
 
-  if (snap.exists) {
-    await docRef.set(omitUndefined({ ...payload, id: uid, updatedAt: now }), { merge: true });
-  } else {
-    const data = omitUndefined({
-      id: uid,
-      displayName: payload.displayName as string | undefined,
-      avatarUrl: (payload as Record<string, unknown>)['avatarUrl'] as string | undefined,
-      timezone: payload.timezone as string | undefined,
-      language: payload.language as string | undefined,
-      consents: (payload.consents as Record<string, unknown> | undefined) ?? {},
-      createdAt: now,
-      updatedAt: now,
-      pushTokens: [] as string[],
-      isDeleted: false,
+    if (snap.exists) {
+      await docRef.set(omitUndefined({ ...payload, id: uid, updatedAt: now }), { merge: true });
+    } else {
+      const data = omitUndefined({
+        id: uid,
+        displayName: payload.displayName as string | undefined,
+        avatarUrl: (payload as Record<string, unknown>)['avatarUrl'] as string | undefined,
+        timezone: payload.timezone as string | undefined,
+        language: payload.language as string | undefined,
+        consents: (payload.consents as Record<string, unknown> | undefined) ?? {},
+        createdAt: now,
+        updatedAt: now,
+        pushTokens: [] as string[],
+        isDeleted: false,
+      });
+      await docRef.set(data);
+    }
+    const fresh = await docRef.get();
+    return res.status(200).json({ user: fresh.data() });
+  } catch (error) {
+    logger.error('Failed to initialize user profile', {
+      userId: uid,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      requestId: req.headers['x-request-id']
     });
-    await docRef.set(data);
+    return sendError(res, { 
+      code: 'unavailable', 
+      message: getErrorMessage(req, 'error.database_unavailable') 
+    });
   }
-  const fresh = await docRef.get();
-  return res.status(200).json({ user: fresh.data() });
 });
 
 // GET /v1/users.me — получить профиль
 usersRouter.get('/users.me', async (req: Request, res: Response) => {
   const uid = req.auth?.user.uid;
   if (!uid) {
-    return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
+    return sendError(res, { code: 'unauthenticated', message: getErrorMessage(req, 'auth.required') });
   }
-  const doc = await db.collection('users').doc(uid).get();
-  if (!doc.exists) {
-    return sendError(res, { code: 'not_found', message: 'User profile not found' });
+
+  try {
+    const doc = await db.collection('users').doc(uid).get();
+    if (!doc.exists) {
+      return sendError(res, { code: 'not_found', message: getErrorMessage(req, 'user.not_found') });
+    }
+    return res.status(200).json({ user: doc.data() });
+  } catch (error) {
+    logger.error('Failed to get user profile', {
+      userId: uid,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      requestId: req.headers['x-request-id']
+    });
+    return sendError(res, { 
+      code: 'unavailable', 
+      message: getErrorMessage(req, 'error.database_unavailable') 
+    });
   }
-  return res.status(200).json({ user: doc.data() });
 });
 
 // PATCH /v1/users.me — обновить профиль
 usersRouter.patch('/users.me', validateBody('update'), async (req: Request, res: Response) => {
   const uid = req.auth?.user.uid;
   if (!uid) {
-    return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
+    return sendError(res, { code: 'unauthenticated', message: getErrorMessage(req, 'auth.required') });
   }
-  const docRef = db.collection('users').doc(uid);
-  const snap = await docRef.get();
-  if (!snap.exists) {
-    return sendError(res, { code: 'not_found', message: 'User profile not found' });
+
+  try {
+    const docRef = db.collection('users').doc(uid);
+    const snap = await docRef.get();
+    if (!snap.exists) {
+      return sendError(res, { code: 'not_found', message: getErrorMessage(req, 'user.not_found') });
+    }
+    const payload = omitUndefined((req.body ?? {}) as Record<string, unknown>);
+    const now = FieldValue.serverTimestamp();
+    await docRef.set(omitUndefined({ ...payload, id: uid, updatedAt: now }), { merge: true });
+    const fresh = await docRef.get();
+    return res.status(200).json({ user: fresh.data() });
+  } catch (error) {
+    logger.error('Failed to update user profile', {
+      userId: uid,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      requestId: req.headers['x-request-id']
+    });
+    return sendError(res, { 
+      code: 'unavailable', 
+      message: getErrorMessage(req, 'error.database_unavailable') 
+    });
   }
-  const payload = omitUndefined((req.body ?? {}) as Record<string, unknown>);
-  const now = FieldValue.serverTimestamp();
-  await docRef.set(omitUndefined({ ...payload, id: uid, updatedAt: now }), { merge: true });
-  const fresh = await docRef.get();
-  return res.status(200).json({ user: fresh.data() });
 });
 
-// POST /v1/users.me/delete — пометка на удаление (асинхронная задача заглушка)
-usersRouter.post('/users.me/delete', (req: Request, res: Response) => {
+// POST /v1/users.me/delete — запрос на удаление аккаунта (асинхронно)
+usersRouter.post('/users.me/delete', async (req: Request, res: Response) => {
   const uid = req.auth?.user.uid;
   if (!uid) {
-    return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
+    return sendError(res, { code: 'unauthenticated', message: getErrorMessage(req, 'auth.required') });
   }
-  // Заглушка: генерируем jobId, реальная асинхронная задача будет реализована позже
-  const jobId = `job_${Math.random().toString(36).slice(2)}`;
-  return res.status(202).json({ jobId });
+
+  try {
+    // Проверяем, что пользователь существует и не удален
+    const userRef = db.collection('users').doc(uid);
+    const userDoc = await userRef.get();
+    
+    if (!userDoc.exists) {
+      return sendError(res, { code: 'not_found', message: getErrorMessage(req, 'user.not_found') });
+    }
+
+    const userData = userDoc.data();
+    if (userData?.isDeleted) {
+      return sendError(res, { code: 'failed_precondition', message: getErrorMessage(req, 'user.already_deleted') });
+    }
+
+    // Генерируем уникальный jobId
+    const jobId = `del_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    
+    // Создаем задачу удаления
+    const deletionJob = {
+      jobId,
+      userId: uid,
+      requestedAt: new Date().toISOString(),
+      priority: 'normal' as const,
+      status: 'pending',
+      createdAt: FieldValue.serverTimestamp()
+    };
+
+    // Сохраняем задачу в Firestore
+    await db.collection('deletionJobs').doc(jobId).set(deletionJob);
+
+    // Публикуем сообщение в Pub/Sub для асинхронной обработки
+    const { PubSub } = await import('@google-cloud/pubsub');
+    const pubsub = new PubSub();
+    const topic = pubsub.topic('user-deletion');
+    
+    const message = {
+      data: Buffer.from(JSON.stringify({
+        jobId,
+        userId: uid,
+        requestedAt: deletionJob.requestedAt,
+        priority: 'normal'
+      }))
+    };
+
+    await topic.publishMessage(message);
+
+    // Помечаем пользователя как удаляемого
+    await userRef.update({
+      isDeleting: true,
+      deletionRequestedAt: FieldValue.serverTimestamp(),
+      deletionJobId: jobId
+    });
+
+    logger.info('User deletion job created', { 
+      jobId, 
+      userId: uid,
+      requestId: req.headers['x-request-id']
+    });
+
+    return res.status(202).json({ 
+      jobId,
+      message: getErrorMessage(req, 'user.deletion_requested')
+    });
+
+  } catch (error) {
+    logger.error('Failed to create user deletion job', {
+      userId: uid,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      requestId: req.headers['x-request-id']
+    });
+
+    return sendError(res, { 
+      code: 'internal', 
+      message: 'Failed to process deletion request' 
+    });
+  }
 });
 
 export default usersRouter;
