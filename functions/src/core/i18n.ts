@@ -87,6 +87,10 @@ const MESSAGES: Record<SupportedLanguage, Record<string, string>> = {
     'error.database_unavailable': 'Database temporarily unavailable. Please try again later.',
     'error.validation_failed': 'Validation failed',
     'error.idempotency_key_conflict': 'Idempotency key conflict',
+
+    // Push notifications
+    'push.hug.received.title': 'You received a hug',
+    'push.hug.received.body': 'Open the app to feel it',
   },
   
   ru: {
@@ -163,6 +167,10 @@ const MESSAGES: Record<SupportedLanguage, Record<string, string>> = {
     'error.database_unavailable': 'База данных временно недоступна. Попробуйте позже.',
     'error.validation_failed': 'Ошибка валидации',
     'error.idempotency_key_conflict': 'Конфликт ключа идемпотентности',
+
+    // Push notifications
+    'push.hug.received.title': 'Вы получили объятие',
+    'push.hug.received.body': 'Откройте приложение, чтобы почувствовать его',
   },
   
   // Заглушки для других языков (можно расширить)

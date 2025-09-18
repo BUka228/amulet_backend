@@ -4,6 +4,7 @@ import { sendError } from '../core/http';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../core/firebase';
 import { getMessaging } from 'firebase-admin/messaging';
+import { getMessage } from '../core/i18n';
 import { z } from 'zod';
 import * as logger from 'firebase-functions/logger';
 
@@ -144,8 +145,8 @@ hugsRouter.post('/hugs.send', validateBody('send'), async (req: Request, res: Re
         const response = await getMessaging().sendEachForMulticast({
           tokens,
           notification: {
-            title: 'You received a hug',
-            body: 'Open the app to feel it',
+            title: getMessage(req, 'push.hug.received.title'),
+            body: getMessage(req, 'push.hug.received.body'),
           },
           data: {
             type: 'hug.received',
