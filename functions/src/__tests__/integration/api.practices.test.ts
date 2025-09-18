@@ -58,6 +58,15 @@ describe('Integration: /v1/practices', () => {
     expect(allIds.size).toBe(items1.length + items2.length);
   });
 
+  test('Pagination edges: empty and last page for practices', async () => {
+    const page = await request(app)
+      .get('/v1/practices')
+      .set('X-Test-Uid', uid)
+      .query({ limit: 1, cursor: '0_invalid' })
+      .expect(200);
+    expect(Array.isArray(page.body.items)).toBe(true);
+  });
+
   test('GET /v1/practices/:id returns document', async () => {
     const res = await request(app)
       .get('/v1/practices/p1')

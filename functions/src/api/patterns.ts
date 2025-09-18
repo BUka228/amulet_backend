@@ -320,8 +320,16 @@ patternsRouter.post('/patterns/:id/share', validateBody('share'), async (req: Re
       return sendError(res, { code: 'failed_precondition', message: 'Pattern sharing is not allowed until approved' });
     }
 
-    // Transactional Outbox: в одной транзакции создаём запись шаринга и запись задачи в outbox
+    // Валидация получателя, если указан toUserId
     const body = req.body as { toUserId?: string; pairId?: string };
+    if (body.toUserId) {
+      const recipient = await db.collection('users').doc(body.toUserId).get();
+      if (!recipient.exists) {
+        return sendError(res, { code: 'not_found', message: 'Recipient user not found' });
+      }
+    }
+
+    // Transactional Outbox: в одной транзакции создаём запись шаринга и запись задачи в outbox
     const patternId = req.params.id;
     const now = new Date();
     await db.runTransaction(async (tx) => {

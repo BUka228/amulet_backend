@@ -129,6 +129,108 @@ describe('Integration: /v1/patterns', () => {
     expect(allIds.size).toBe(items1.length + items2.length);
   });
 
+  test('Pagination edges: last page and empty page', async () => {
+    // ensure small dataset
+    const now = Date.now();
+    await Promise.all(['e1','e2'].map(async (s, idx) => {
+      const id = `edge_${s}`;
+      await db.collection('patterns').doc(id).set({ id, public: true, reviewStatus: 'approved', kind: 'light', hardwareVersion: 200, createdAt: new Date(now - idx * 1000) });
+    }));
+
+    const p1 = await request(app)
+      .get('/v1/patterns')
+      .set('X-Test-Uid', uid)
+      .query({ limit: 2 })
+      .expect(200);
+    expect((p1.body.items as any[]).length).toBeLessThanOrEqual(2);
+    const cursor = p1.body.nextCursor as string | undefined;
+
+    if (cursor) {
+      const p2 = await request(app)
+        .get('/v1/patterns')
+        .set('X-Test-Uid', uid)
+        .query({ cursor, limit: 2 })
+        .expect(200);
+      // last page may be empty
+      expect(Array.isArray(p2.body.items)).toBe(true);
+    }
+  });
+
+  test('Invalid cursor returns first page (graceful)', async () => {
+    const res = await request(app)
+      .get('/v1/patterns')
+      .set('X-Test-Uid', uid)
+      .query({ cursor: 'invalid_cursor_value', limit: 2 })
+      .expect(200);
+    expect(Array.isArray(res.body.items)).toBe(true);
+  });
+
+  test('Filter combinations: hardwareVersion + tags', async () => {
+    const now = new Date();
+    await Promise.all([
+      db.collection('patterns').doc('combo1').set({ id: 'combo1', public: true, reviewStatus: 'approved', kind: 'light', hardwareVersion: 200, tags: ['calm','focus'], createdAt: now }),
+      db.collection('patterns').doc('combo2').set({ id: 'combo2', public: true, reviewStatus: 'approved', kind: 'light', hardwareVersion: 100, tags: ['calm'], createdAt: now }),
+    ]);
+    const res = await request(app)
+      .get('/v1/patterns')
+      .set('X-Test-Uid', uid)
+      .query({ hardwareVersion: 200, tags: 'calm' })
+      .expect(200);
+    const ids = (res.body.items as any[]).map(i => i.id);
+    expect(ids).toContain('combo1');
+    expect(ids).not.toContain('combo2');
+  });
+
+  test('Negative: share to non-existent user returns 404', async () => {
+    // ensure pattern owned by uid and approved
+    await db.collection('patterns').doc('p-share-neg').set({ id: 'p-share-neg', ownerId: uid, title: 'Test', public: false, reviewStatus: 'approved', kind: 'light', hardwareVersion: 200, createdAt: new Date(), updatedAt: new Date() });
+    const res = await request(app)
+      .post('/v1/patterns/p-share-neg/share')
+      .set('X-Test-Uid', uid)
+      .send({ toUserId: 'no_such_user' })
+      .expect(404);
+    expect(res.body.code).toBe('not_found');
+    expect(typeof res.body.message).toBe('string');
+  });
+
+  test('Negative: preview to foreign device denied', async () => {
+    await db.collection('devices').doc('d2').set({ id: 'd2', ownerId: 'other', hardwareVersion: 100, createdAt: new Date() });
+    const payload = {
+      deviceId: 'd2',
+      duration: 1000,
+      spec: { type: 'pulse', hardwareVersion: 200, duration: 1000, elements: [{ type: 'pulse', startTime: 0, duration: 1000, color: '#FFFFFF' }] }
+    };
+    await request(app)
+      .post('/v1/patterns/preview')
+      .set('X-Test-Uid', uid)
+      .send(payload)
+      .expect(403);
+  });
+
+  test('More spec negatives: unknown element type and invalid ranges', async () => {
+    const badUnknown = {
+      kind: 'light',
+      hardwareVersion: 200,
+      spec: { type: 'custom', hardwareVersion: 200, duration: 500, elements: [{ type: 'unknown', startTime: 0, duration: 100 }] },
+    } as any;
+    await request(app)
+      .post('/v1/patterns')
+      .set('X-Test-Uid', uid)
+      .send(badUnknown)
+      .expect(400);
+
+    const badRange = {
+      kind: 'light',
+      hardwareVersion: 200,
+      spec: { type: 'pulse', hardwareVersion: 200, duration: 500, elements: [{ type: 'pulse', startTime: -1, duration: 0, color: '#fff' }] },
+    } as any;
+    await request(app)
+      .post('/v1/patterns')
+      .set('X-Test-Uid', uid)
+      .send(badRange)
+      .expect(400);
+  });
+
   test('GET /v1/patterns.mine lists own patterns', async () => {
     await db.collection('patterns').add({ id: 'mine1', ownerId: uid, kind: 'light', public: false, hardwareVersion: 200, reviewStatus: 'pending', createdAt: new Date(), updatedAt: new Date() });
     const res = await request(app)
