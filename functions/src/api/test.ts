@@ -8,6 +8,7 @@ import { authenticateToken, verifyAppCheck } from '../core/auth';
 import { applyBaseMiddlewares, errorHandler } from '../core/http';
 import { i18nMiddleware } from '../core/i18n';
 import { usersRouter } from './users';
+import { devicesRouter } from './devices';
 // no-op
 
 const app = express();
@@ -53,6 +54,7 @@ app.get('/public', (req: Request, res: Response) => {
 
 // Версионированный префикс /v1
 app.use('/v1', usersRouter);
+app.use('/v1', devicesRouter);
 
 // Защищенный endpoint (требует аутентификации)
 app.get('/protected', authenticateToken(), (req: Request, res: Response) => {
