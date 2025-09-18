@@ -220,25 +220,12 @@ hugsRouter.get('/hugs', async (req: Request, res: Response) => {
     const direction = (req.query.direction as string) || '';
     const { limit, cursor } = parsePagination(req);
 
-    let q = db.collection('hugs').orderBy('createdAt', 'desc') as FirebaseFirestore.Query;
-    if (direction === 'sent') {
-      q = q.where('fromUserId', '==', uid);
-    } else if (direction === 'received') {
-      q = q.where('toUserId', '==', uid);
-    } else {
-      // по умолчанию возвращаем все связанные: отправленные или полученные
-      // Firestore не поддерживает OR без композитного индекса/collection group, поэтому берём два запроса
-      const [sentSnap, recvSnap] = await Promise.all([
-        db.collection('hugs').where('fromUserId', '==', uid).orderBy('createdAt', 'desc').limit(limit).get(),
-        db.collection('hugs').where('toUserId', '==', uid).orderBy('createdAt', 'desc').limit(limit).get(),
-      ]);
-      const merged = [...sentSnap.docs, ...recvSnap.docs]
-        .sort((a, b) => (b.createTime.toMillis() - a.createTime.toMillis()))
-        .slice(0, limit);
-      const items = merged.map((d) => d.data());
-      const nextCursor = merged.length === limit ? merged[merged.length - 1].id : undefined;
-      return res.status(200).json({ items, nextCursor });
+    if (direction !== 'sent' && direction !== 'received') {
+      return sendError(res, { code: 'invalid_argument', message: 'Query param "direction" is required (sent|received)' });
     }
+
+    let q = db.collection('hugs').orderBy('createdAt', 'desc') as FirebaseFirestore.Query;
+    q = direction === 'sent' ? q.where('fromUserId', '==', uid) : q.where('toUserId', '==', uid);
 
     if (cursor) {
       const cursorDoc = await db.collection('hugs').doc(cursor).get();
