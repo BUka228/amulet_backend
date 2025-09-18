@@ -158,19 +158,28 @@ patternsRouter.get('/patterns', async (req: Request, res: Response) => {
     let q = db.collection('patterns')
       .where('public', '==', true)
       .where('reviewStatus', '==', 'approved')
-      .orderBy('createdAt', 'desc') as FirebaseFirestore.Query;
+      .orderBy('createdAt', 'desc')
+      .orderBy('id', 'desc') as FirebaseFirestore.Query;
     if (hardwareVersion === 100 || hardwareVersion === 200) q = q.where('hardwareVersion', '==', hardwareVersion);
     if (kind) q = q.where('kind', '==', kind);
     if (tags) q = q.where('tags', 'array-contains', tags);
 
     if (cursor) {
-      const cursorDoc = await db.collection('patterns').doc(cursor).get();
-      if (cursorDoc.exists) q = q.startAfter(cursorDoc);
+      const [tsStr, id] = cursor.split('_', 2);
+      const ts = Number(tsStr);
+      if (Number.isFinite(ts) && id) {
+        q = q.startAfter(new Date(ts), id);
+      }
     }
 
     const snap = await q.limit(limit).get();
     const items = snap.docs.map((d) => d.data());
-    const nextCursor = snap.size === limit ? snap.docs[snap.docs.length - 1].id : undefined;
+    const last = snap.docs[snap.docs.length - 1];
+    const lastData = last?.data() as { createdAt?: FirebaseFirestore.Timestamp; id?: string } | undefined;
+    let nextCursor: string | undefined = undefined;
+    if (snap.size === limit && lastData?.createdAt && lastData?.id) {
+      nextCursor = `${lastData.createdAt.toDate().getTime()}_${lastData.id}`;
+    }
     return res.status(200).json({ items, nextCursor });
   } catch (error) {
     logger.error('Patterns list failed', { userId: uid, error: error instanceof Error ? error.message : 'Unknown error', requestId: req.headers['x-request-id'] });

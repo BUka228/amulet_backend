@@ -55,6 +55,39 @@ describe('Integration: /v1/patterns', () => {
     expect(ids).not.toContain('pend1');
   });
 
+  test('Stable cursor pagination: no duplicates when item inserted between pages', async () => {
+    // подготовим 3 approved public паттерна
+    const now = Date.now();
+    await Promise.all(['a','b','c'].map(async (s, idx) => {
+      const id = `pub_${s}`;
+      await db.collection('patterns').doc(id).set({ id, public: true, reviewStatus: 'approved', kind: 'light', hardwareVersion: 200, createdAt: new Date(now - idx * 1000), updatedAt: new Date(now - idx * 1000) });
+    }));
+
+    // первая страница limit=2
+    const page1 = await request(app)
+      .get('/v1/patterns')
+      .set('X-Test-Uid', uid)
+      .query({ limit: 2 })
+      .expect(200);
+    const items1 = page1.body.items as any[];
+    const cursor = page1.body.nextCursor as string;
+    expect(items1.length).toBe(2);
+
+    // Между запросами добавляется новый документ в начало
+    await db.collection('patterns').doc('pub_new').set({ id: 'pub_new', public: true, reviewStatus: 'approved', kind: 'light', hardwareVersion: 200, createdAt: new Date(Date.now() + 1000), updatedAt: new Date(Date.now() + 1000) });
+
+    // вторая страница по курсору
+    const page2 = await request(app)
+      .get('/v1/patterns')
+      .set('X-Test-Uid', uid)
+      .query({ cursor, limit: 2 })
+      .expect(200);
+    const items2 = page2.body.items as any[];
+
+    const allIds = new Set([...items1, ...items2].map((i) => i.id));
+    expect(allIds.size).toBe(items1.length + items2.length);
+  });
+
   test('GET /v1/patterns.mine lists own patterns', async () => {
     await db.collection('patterns').add({ id: 'mine1', ownerId: uid, kind: 'light', public: false, hardwareVersion: 200, reviewStatus: 'pending', createdAt: new Date(), updatedAt: new Date() });
     const res = await request(app)

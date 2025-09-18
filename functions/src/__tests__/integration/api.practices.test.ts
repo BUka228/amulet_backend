@@ -30,6 +30,34 @@ describe('Integration: /v1/practices', () => {
     expect(res.body.items.length).toBeGreaterThanOrEqual(1);
   });
 
+  test('Stable cursor pagination for practices', async () => {
+    const now = Date.now();
+    await Promise.all(['x','y','z'].map(async (s, idx) => {
+      const id = `pr_${s}`;
+      await db.collection('practices').doc(id).set({ id, type: 'breath', title: id, durationSec: 60, patternId: 'pat', createdAt: new Date(now - idx * 1000) });
+    }));
+
+    const page1 = await request(app)
+      .get('/v1/practices')
+      .set('X-Test-Uid', uid)
+      .query({ limit: 2 })
+      .expect(200);
+    const items1 = page1.body.items as any[];
+    const cursor = page1.body.nextCursor as string;
+    expect(items1.length).toBe(2);
+
+    await db.collection('practices').doc('pr_new').set({ id: 'pr_new', type: 'breath', title: 'pr_new', durationSec: 60, patternId: 'pat', createdAt: new Date(Date.now() + 1000) });
+
+    const page2 = await request(app)
+      .get('/v1/practices')
+      .set('X-Test-Uid', uid)
+      .query({ cursor, limit: 2 })
+      .expect(200);
+    const items2 = page2.body.items as any[];
+    const allIds = new Set([...items1, ...items2].map((i) => i.id));
+    expect(allIds.size).toBe(items1.length + items2.length);
+  });
+
   test('GET /v1/practices/:id returns document', async () => {
     const res = await request(app)
       .get('/v1/practices/p1')

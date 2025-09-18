@@ -29,18 +29,28 @@ practicesRouter.get('/practices', async (req: Request, res: Response) => {
     const type = (req.query.type as string) || '';
     const lang = (req.query.lang as string) || '';
 
-    let q = db.collection('practices').orderBy('createdAt', 'desc') as FirebaseFirestore.Query;
+    let q = db.collection('practices')
+      .orderBy('createdAt', 'desc')
+      .orderBy('id', 'desc') as FirebaseFirestore.Query;
     if (type) q = q.where('type', '==', type);
     if (lang) q = q.where(`locales.${lang}.title`, '!=', null);
 
     if (cursor) {
-      const cursorDoc = await db.collection('practices').doc(cursor).get();
-      if (cursorDoc.exists) q = q.startAfter(cursorDoc);
+      const [tsStr, id] = cursor.split('_', 2);
+      const ts = Number(tsStr);
+      if (Number.isFinite(ts) && id) {
+        q = q.startAfter(new Date(ts), id);
+      }
     }
 
     const snap = await q.limit(limit).get();
     const items = snap.docs.map((d) => d.data());
-    const nextCursor = snap.size === limit ? snap.docs[snap.docs.length - 1].id : undefined;
+    const last = snap.docs[snap.docs.length - 1];
+    const lastData = last?.data() as { createdAt?: FirebaseFirestore.Timestamp; id?: string } | undefined;
+    let nextCursor: string | undefined = undefined;
+    if (snap.size === limit && lastData?.createdAt && lastData?.id) {
+      nextCursor = `${lastData.createdAt.toDate().getTime()}_${lastData.id}`;
+    }
     return res.status(200).json({ items, nextCursor });
   } catch (error) {
     logger.error('Practices list failed', {
