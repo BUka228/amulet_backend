@@ -177,14 +177,8 @@ practicesRouter.post('/practices.session/:sessionId/stop', async (req: Request, 
     const dailyRef = db.collection('users').doc(uid).collection('stats_daily').doc(dateKey);
 
     await db.runTransaction(async (trx) => {
-      trx.update(sessionRef, {
-      status: completed ? 'completed' : 'aborted',
-      endedAt: FieldValue.serverTimestamp(),
-      durationSec: finalDuration,
-        updatedAt: FieldValue.serverTimestamp(),
-        ...(userFeedback ? { userFeedback } : {}),
-      });
-
+      // Firestore transactions require all reads before any writes
+      await trx.get(sessionRef);
       const dailySnap = await trx.get(dailyRef);
       const base: DailyDoc = dailySnap.exists ? (dailySnap.data() as DailyDoc) : { totals: { sessionsCount: 0, totalDurationSec: 0, practicesCompleted: 0, hugsSent: 0, hugsReceived: 0, patternsCreated: 0, rulesTriggered: 0 } };
       const totals: DailyTotals = base.totals || { sessionsCount: 0, totalDurationSec: 0, practicesCompleted: 0, hugsSent: 0, hugsReceived: 0, patternsCreated: 0, rulesTriggered: 0 };
@@ -195,6 +189,13 @@ practicesRouter.post('/practices.session/:sessionId/stop', async (req: Request, 
         practicesCompleted: (totals.practicesCompleted || 0) + (completed ? 1 : 0),
         // rulesTriggered считаем по source == 'rule' — текущая ручка делает manual, оставляем без изменения
       };
+      trx.update(sessionRef, {
+        status: completed ? 'completed' : 'aborted',
+        endedAt: FieldValue.serverTimestamp(),
+        durationSec: finalDuration,
+        updatedAt: FieldValue.serverTimestamp(),
+        ...(userFeedback ? { userFeedback } : {}),
+      });
       trx.set(dailyRef, { totals: updatedTotals, date: dateKey }, { merge: true });
     });
 
