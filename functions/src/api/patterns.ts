@@ -256,42 +256,37 @@ patternsRouter.post('/patterns/:id/share', validateBody('share'), async (req: Re
       return sendError(res, { code: 'failed_precondition', message: 'Pattern sharing is not allowed until approved' });
     }
 
-    // Логика шаринга: в MVP — создаём запись в коллекции sharedPatterns
+    // Transactional Outbox: в одной транзакции создаём запись шаринга и запись задачи в outbox
     const body = req.body as { toUserId?: string; pairId?: string };
-    await db.collection('sharedPatterns').add({
-      patternId: req.params.id,
-      fromUserId: uid,
-      toUserId: body.toUserId ?? null,
-      pairId: body.pairId ?? null,
-      createdAt: new Date(),
-    });
+    const patternId = req.params.id;
+    const now = new Date();
+    await db.runTransaction(async (tx) => {
+      const sharedRef = db.collection('sharedPatterns').doc();
+      tx.set(sharedRef, {
+        id: sharedRef.id,
+        patternId,
+        fromUserId: uid,
+        toUserId: body.toUserId ?? null,
+        pairId: body.pairId ?? null,
+        createdAt: now,
+      });
 
-    // Если указан конкретный получатель — отправим FCM уведомление
-    if (body.toUserId) {
-      const tokensSnap = await db
-        .collection('notificationTokens')
-        .where('userId', '==', body.toUserId)
-        .where('isActive', '==', true)
-        .get();
-      const tokens = tokensSnap.docs
-        .map((d) => (d.data() as { token?: string }).token)
-        .filter(Boolean) as string[];
-      if (tokens.length > 0) {
-        await getMessaging().sendEachForMulticast({
-          tokens,
-          notification: {
-            title: 'Новый паттерн',
-            body: `Пользователь поделился с вами паттерном "${data.title ?? 'Новый паттерн'}"`,
-          },
-          data: {
-            type: 'pattern.shared',
-            patternId: req.params.id,
-            fromUserId: uid,
-            title: data.title ?? '',
-          },
-        });
-      }
-    }
+      const outboxRef = db.collection('outbox').doc();
+      tx.set(outboxRef, {
+        id: outboxRef.id,
+        type: 'pattern.shared',
+        status: 'pending',
+        payload: {
+          patternId,
+          fromUserId: uid,
+          toUserId: body.toUserId ?? null,
+          title: data.title ?? '',
+        },
+        createdAt: now,
+        attempts: 0,
+        lastError: null,
+      });
+    });
     return res.status(200).json({ shared: true });
   } catch (error) {
     logger.error('Pattern share failed', { userId: uid, patternId: req.params.id, error: error instanceof Error ? error.message : 'Unknown error', requestId: req.headers['x-request-id'] });

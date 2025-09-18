@@ -89,7 +89,7 @@ describe('Integration: /v1/patterns', () => {
     sendMock.mockRestore();
   });
 
-  test('POST /v1/patterns/:id/share sends push to recipient', async () => {
+  test('POST /v1/patterns/:id/share enqueues outbox for recipient', async () => {
     const recipientId = 'u_recipient';
     await Promise.all([
       db.collection('users').doc(recipientId).set({ id: recipientId }),
@@ -97,19 +97,34 @@ describe('Integration: /v1/patterns', () => {
       db.collection('patterns').doc('p-share').set({ id: 'p-share', ownerId: uid, title: 'Северное сияние', public: false, kind: 'light', hardwareVersion: 200, reviewStatus: 'approved', createdAt: new Date(), updatedAt: new Date() }),
     ]);
 
-    const sendMock = jest.spyOn((admin as any).messaging.Messaging.prototype, 'sendEachForMulticast').mockResolvedValue({ successCount: 1, failureCount: 0, responses: [] } as any);
-
     const res = await request(app)
       .post('/v1/patterns/p-share/share')
       .set('X-Test-Uid', uid)
       .send({ toUserId: recipientId })
       .expect(200);
     expect(res.body).toHaveProperty('shared', true);
-    expect(sendMock).toHaveBeenCalled();
-    const args = (sendMock.mock.calls[0] || [])[0] as any;
-    expect(args.notification?.title).toBe('Новый паттерн');
-    expect(args.data?.type).toBe('pattern.shared');
-    sendMock.mockRestore();
+    const outboxSnap = await db.collection('outbox').where('payload.toUserId', '==', recipientId).where('payload.patternId', '==', 'p-share').get();
+    expect(outboxSnap.empty).toBe(false);
+  });
+
+  test('Transactional outbox created for share request', async () => {
+    const recipientId = 'u_recipient3';
+    await Promise.all([
+      db.collection('users').doc(recipientId).set({ id: recipientId }),
+      db.collection('patterns').doc('p-share-2').set({ id: 'p-share-2', ownerId: uid, title: 'Северное сияние', public: false, kind: 'light', hardwareVersion: 200, reviewStatus: 'approved', createdAt: new Date(), updatedAt: new Date() }),
+    ]);
+
+    await request(app)
+      .post('/v1/patterns/p-share-2/share')
+      .set('X-Test-Uid', uid)
+      .send({ toUserId: recipientId })
+      .expect(200);
+
+    const outboxSnap = await db.collection('outbox').where('payload.toUserId', '==', recipientId).where('payload.patternId', '==', 'p-share-2').get();
+    expect(outboxSnap.empty).toBe(false);
+    const doc = outboxSnap.docs[0].data() as any;
+    expect(doc.type).toBe('pattern.shared');
+    expect(doc.status === 'pending' || doc.status === 'processing' || doc.status === 'delivered').toBe(true);
   });
 
   test('POST /v1/patterns/:id/share blocks pending pattern sharing', async () => {
