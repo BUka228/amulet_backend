@@ -141,6 +141,41 @@ hugsRouter.post('/hugs.send', validateBody('send'), async (req: Request, res: Re
           },
         });
         delivered = response.successCount > 0;
+
+        // Очистка невалидных FCM-токенов
+        if (Array.isArray(response.responses) && response.responses.length === tokens.length) {
+          const deadTokens: string[] = [];
+          response.responses.forEach((r, idx) => {
+            const tokenAtIndex = tokens[idx];
+            if (
+              !r.success &&
+              r.error &&
+              (r.error as { code?: string }).code === 'messaging/registration-token-not-registered' &&
+              tokenAtIndex
+            ) {
+              deadTokens.push(tokenAtIndex);
+            }
+          });
+          if (deadTokens.length > 0) {
+            await Promise.all(
+              deadTokens.map(async (t) => {
+                try {
+                  const q = await db.collection('notificationTokens').where('token', '==', t).limit(50).get();
+                  await Promise.all(q.docs.map((d) => d.ref.delete()));
+                  logger.info('Removed invalid FCM token', { token: t, userId: toUserId, hugId: hugDoc.id });
+                } catch (cleanupErr) {
+                  logger.error('Failed to cleanup invalid FCM token', {
+                    token: t,
+                    userId: toUserId,
+                    hugId: hugDoc.id,
+                    error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+                    requestId: req.headers['x-request-id'],
+                  });
+                }
+              })
+            );
+          }
+        }
       }
     } catch (err) {
       logger.error('Failed to send FCM for hug', {
