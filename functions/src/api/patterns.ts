@@ -16,7 +16,7 @@ patternsRouter.use(
 const patternSpecSchema = z
   .object({
     type: z.enum(['breathing', 'pulse', 'rainbow', 'fire', 'gradient', 'chase', 'custom']),
-    hardwareVersion: z.enum([100 as unknown as never, 200 as unknown as never]).transform(Number),
+    hardwareVersion: z.union([z.literal(100), z.literal(200)]),
     duration: z.number().int().min(1).max(10 * 60 * 1000),
     loop: z.boolean().optional(),
     elements: z
@@ -47,7 +47,7 @@ const patternCreateSchema = z
     description: z.string().min(1).max(2000).optional(),
     tags: z.array(z.string().min(1).max(50)).max(20).optional(),
     public: z.boolean().optional(),
-    hardwareVersion: z.number().int().refine((v) => v === 100 || v === 200, 'Invalid hardwareVersion'),
+    hardwareVersion: z.union([z.literal(100), z.literal(200)]),
   })
   .strict();
 
