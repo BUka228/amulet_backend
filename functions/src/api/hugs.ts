@@ -17,6 +17,7 @@ const hugSendSchema = z
         patternId: z.string().min(1).max(200),
       })
       .strict(),
+    inReplyToHugId: z.string().min(1).max(200).optional(),
     payload: z.object({}).catchall(z.unknown()).optional(),
   })
   .strict()
@@ -62,11 +63,12 @@ hugsRouter.post('/hugs.send', validateBody('send'), async (req: Request, res: Re
   }
 
   try {
-    const { toUserId: toUserIdRaw, pairId: pairIdRaw, emotion, payload } = req.body as {
+    const { toUserId: toUserIdRaw, pairId: pairIdRaw, emotion, payload, inReplyToHugId } = req.body as {
       toUserId?: string;
       pairId?: string;
       emotion: { color: string; patternId: string };
       payload?: Record<string, unknown>;
+      inReplyToHugId?: string;
     };
 
     let toUserId = toUserIdRaw;
@@ -108,6 +110,7 @@ hugsRouter.post('/hugs.send', validateBody('send'), async (req: Request, res: Re
       pairId: pairId || null,
       emotion,
       payload: payload ?? null,
+      inReplyToHugId: inReplyToHugId ?? null,
       createdAt: now,
       updatedAt: now,
     } as unknown as Record<string, unknown>;
