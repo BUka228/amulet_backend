@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { getStorage } from 'firebase-admin/storage';
+import { getMessaging } from 'firebase-admin/messaging';
 // appCheck API exists in Admin SDK v12+, but can be absent in some environments
 // We will import lazily to avoid runtime crashes in tests
 
@@ -40,6 +41,7 @@ if (process.env.FIRESTORE_EMULATOR_HOST) {
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+export const messaging = getMessaging(app);
 
 // Опциональная инициализация App Check (может отсутствовать в окружении)
 let _appCheck: unknown = undefined;
