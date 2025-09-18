@@ -5,6 +5,7 @@ import { db } from '../core/firebase';
 import * as logger from 'firebase-functions/logger';
 import { z } from 'zod';
 import { downLevelPatternSpec, PatternSpec } from '../core/patterns';
+import { getMessaging } from 'firebase-admin/messaging';
 
 export const patternsRouter = express.Router();
 
@@ -286,8 +287,32 @@ patternsRouter.post('/patterns/preview', validateBody('preview'), async (req: Re
       durationSpec: adjustedSpec.duration,
     });
 
-    // Здесь могла бы быть отправка команды устройству через FCM/RT c adjustedSpec и duration
+    // Отправляем команду предпросмотра на мобильное приложение через FCM
+    // Ожидается, что клиент/мобильное приложение, получив пуш, выполнит BLE-передачу на амулет
+    const tokensSnap = await db
+      .collection('notificationTokens')
+      .where('userId', '==', uid)
+      .where('isActive', '==', true)
+      .get();
+    const tokens = tokensSnap.docs
+      .map((d) => (d.data() as { token?: string }).token)
+      .filter(Boolean) as string[];
+
     const previewId = `prev_${Date.now()}`;
+    if (tokens.length > 0) {
+      await getMessaging().sendEachForMulticast({
+        tokens,
+        data: {
+          type: 'pattern.preview',
+          previewId,
+          deviceId,
+          hardwareVersion: String(targetHw),
+          spec: JSON.stringify(adjustedSpec),
+          duration: duration ? String(duration) : '',
+        },
+      });
+    }
+
     return res.status(200).json({ previewId });
   } catch (error) {
     logger.error('Pattern preview failed', { userId: uid, error: error instanceof Error ? error.message : 'Unknown error', requestId: req.headers['x-request-id'] });
