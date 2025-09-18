@@ -48,7 +48,7 @@ async function anonymizeUserData(userId: string): Promise<void> {
       .where('ownerId', '==', userId)
       .get();
     
-    devicesSnapshot.docs.forEach(doc => {
+    devicesSnapshot.docs.forEach((doc) => {
       batch.update(doc.ref, {
         ownerId: null,
         name: 'Deleted Device',
@@ -62,7 +62,7 @@ async function anonymizeUserData(userId: string): Promise<void> {
       .where('ownerId', '==', userId)
       .get();
     
-    sessionsSnapshot.docs.forEach(doc => {
+    sessionsSnapshot.docs.forEach((doc) => {
       batch.update(doc.ref, {
         ownerId: null,
         isDeleted: true,
@@ -75,7 +75,7 @@ async function anonymizeUserData(userId: string): Promise<void> {
       .where('ownerId', '==', userId)
       .get();
     
-    patternsSnapshot.docs.forEach(doc => {
+    patternsSnapshot.docs.forEach((doc) => {
       batch.update(doc.ref, {
         ownerId: null,
         title: 'Deleted Pattern',
@@ -90,7 +90,7 @@ async function anonymizeUserData(userId: string): Promise<void> {
       .where('ownerId', '==', userId)
       .get();
     
-    rulesSnapshot.docs.forEach(doc => {
+    rulesSnapshot.docs.forEach((doc) => {
       batch.update(doc.ref, {
         ownerId: null,
         isDeleted: true,
@@ -103,7 +103,7 @@ async function anonymizeUserData(userId: string): Promise<void> {
       .where('memberIds', 'array-contains', userId)
       .get();
     
-    pairsSnapshot.docs.forEach(doc => {
+    pairsSnapshot.docs.forEach((doc) => {
       const data = doc.data();
       const memberIds = data.memberIds || [];
       const updatedMemberIds = memberIds.map((id: string) => 
@@ -123,7 +123,7 @@ async function anonymizeUserData(userId: string): Promise<void> {
       .where('fromUserId', '==', userId)
       .get();
     
-    hugsFromSnapshot.docs.forEach(doc => {
+    hugsFromSnapshot.docs.forEach((doc) => {
       batch.update(doc.ref, {
         fromUserId: null,
         isDeleted: true,
@@ -135,7 +135,7 @@ async function anonymizeUserData(userId: string): Promise<void> {
       .where('toUserId', '==', userId)
       .get();
     
-    hugsToSnapshot.docs.forEach(doc => {
+    hugsToSnapshot.docs.forEach((doc) => {
       batch.update(doc.ref, {
         toUserId: null,
         isDeleted: true,
@@ -148,7 +148,7 @@ async function anonymizeUserData(userId: string): Promise<void> {
       .where('userId', '==', userId)
       .get();
     
-    telemetrySnapshot.docs.forEach(doc => {
+    telemetrySnapshot.docs.forEach((doc) => {
       batch.update(doc.ref, {
         userId: null,
         isDeleted: true,
@@ -188,7 +188,7 @@ async function deleteUserData(userId: string): Promise<void> {
         .where('ownerId', '==', userId)
         .get();
       
-      snapshot.docs.forEach(doc => {
+      snapshot.docs.forEach((doc) => {
         batch.delete(doc.ref);
       });
     }
@@ -198,7 +198,7 @@ async function deleteUserData(userId: string): Promise<void> {
       .where('memberIds', 'array-contains', userId)
       .get();
     
-    pairsSnapshot.docs.forEach(doc => {
+    pairsSnapshot.docs.forEach((doc) => {
       batch.delete(doc.ref);
     });
 

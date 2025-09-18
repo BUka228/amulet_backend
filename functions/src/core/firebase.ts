@@ -42,7 +42,7 @@ export const auth = getAuth(app);
 export const storage = getStorage(app);
 
 // Опциональная инициализация App Check (может отсутствовать в окружении)
-let _appCheck: any = undefined;
+let _appCheck: unknown = undefined;
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { getAppCheck } = require('firebase-admin/app-check');

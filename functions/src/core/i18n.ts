@@ -190,7 +190,7 @@ export function getLanguageFromRequest(req: Request): SupportedLanguage {
   // Формат: "en-US,en;q=0.9,ru;q=0.8"
   const languages = acceptLanguage
     .split(',')
-    .map(lang => {
+    .map((lang) => {
       const [locale, qValue] = lang.trim().split(';q=');
       const quality = qValue ? parseFloat(qValue) : 1.0;
       return { locale: locale.trim(), quality };
@@ -247,7 +247,7 @@ export function getErrorMessage(req: Request, key: string, fallback?: string): s
  * Middleware для добавления языка в контекст запроса
  */
 export function i18nMiddleware() {
-  return (req: Request, res: any, next: any) => {
+  return (req: Request, res: unknown, next: () => void) => {
     req.language = getLanguageFromRequest(req);
     next();
   };
