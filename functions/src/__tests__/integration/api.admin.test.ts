@@ -12,7 +12,7 @@ describe('Integration: /v1/admin/patterns/:id/review', () => {
     await Promise.all([
       db.collection('users').doc(adminUid).set({ id: adminUid, createdAt: now, role: 'admin' }),
       db.collection('users').doc(userUid).set({ id: userUid, createdAt: now }),
-      db.collection('patterns').doc('p_mod_1').set({ id: 'p_mod_1', ownerId: userUid, public: true, reviewStatus: 'pending', kind: 'light', hardwareVersion: 200, createdAt: now, updatedAt: now, title: 'Pending Pattern' }),
+      db.collection('patterns').doc('p_mod_1').set({ id: 'p_mod_1', ownerId: userUid, public: true, reviewStatus: 'pending', kind: 'light', hardwareVersion: 200, tags: ['calm'], createdAt: now, updatedAt: now, title: 'Pending Pattern' }),
     ]);
   });
 
@@ -22,6 +22,49 @@ describe('Integration: /v1/admin/patterns/:id/review', () => {
       .set('X-Test-Uid', userUid)
       .send({ action: 'approve' })
       .expect(403);
+  });
+
+  test('admin list/get/patch/delete patterns', async () => {
+    // list with filters
+    const list = await request(app)
+      .get('/v1/admin/patterns')
+      .set('X-Test-Uid', adminUid)
+      .set('X-Test-Admin', '1')
+      .query({ reviewStatus: 'pending', hardwareVersion: 200, tags: 'calm' })
+      .expect(200);
+    const ids = (list.body.items as any[]).map(i => i.id);
+    expect(ids).toContain('p_mod_1');
+
+    // get
+    const get = await request(app)
+      .get('/v1/admin/patterns/p_mod_1')
+      .set('X-Test-Uid', adminUid)
+      .set('X-Test-Admin', '1')
+      .expect(200);
+    expect(get.body?.pattern?.id).toBe('p_mod_1');
+
+    // patch
+    const patch = await request(app)
+      .patch('/v1/admin/patterns/p_mod_1')
+      .set('X-Test-Uid', adminUid)
+      .set('X-Test-Admin', '1')
+      .send({ title: 'Updated by admin', public: true, reviewStatus: 'approved' })
+      .expect(200);
+    expect(patch.body?.pattern?.title).toBe('Updated by admin');
+    expect(patch.body?.pattern?.reviewStatus).toBe('approved');
+
+    // delete
+    await request(app)
+      .delete('/v1/admin/patterns/p_mod_1')
+      .set('X-Test-Uid', adminUid)
+      .set('X-Test-Admin', '1')
+      .expect(200);
+
+    await request(app)
+      .get('/v1/admin/patterns/p_mod_1')
+      .set('X-Test-Uid', adminUid)
+      .set('X-Test-Admin', '1')
+      .expect(404);
   });
 
   test('approve pattern as admin', async () => {
