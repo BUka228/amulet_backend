@@ -13,6 +13,7 @@ import { hugsRouter } from './hugs';
 import { pairsRouter } from './pairs';
 import { practicesRouter } from './practices';
 import { patternsRouter } from './patterns';
+import { statsRouter } from './stats';
 import { adminRouter } from './admin';
 // no-op
 
@@ -65,6 +66,7 @@ app.use('/v1', hugsRouter);
 app.use('/v1', pairsRouter);
 app.use('/v1', practicesRouter);
 app.use('/v1', patternsRouter);
+app.use('/v1', statsRouter);
 app.use('/v1', adminRouter);
 
 // Защищенный endpoint (требует аутентификации)
