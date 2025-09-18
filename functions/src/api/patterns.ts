@@ -4,6 +4,7 @@ import { sendError } from '../core/http';
 import { db } from '../core/firebase';
 import * as logger from 'firebase-functions/logger';
 import { z } from 'zod';
+import { downLevelPatternSpec, PatternSpec } from '../core/patterns';
 
 export const patternsRouter = express.Router();
 
@@ -264,14 +265,28 @@ patternsRouter.post('/patterns/preview', validateBody('preview'), async (req: Re
   const uid = req.auth?.user.uid;
   if (!uid) return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
   try {
-    const { deviceId } = req.body as { deviceId: string };
+    const { deviceId, spec, duration } = req.body as { deviceId: string; spec: PatternSpec; duration?: number };
     // В MVP просто валидируем, что устройство принадлежит пользователю
     const dev = await db.collection('devices').doc(deviceId).get();
     if (!dev.exists) return sendError(res, { code: 'not_found', message: 'Device not found' });
-    const data = dev.data() as { ownerId?: string };
+    const data = dev.data() as { ownerId?: string; hardwareVersion?: number };
     if (data.ownerId !== uid) return sendError(res, { code: 'permission_denied', message: 'Access denied' });
 
-    // Здесь могла бы быть отправка команды устройству через FCM/RT, пока вернём заглушку previewId
+    // Даун-левелинг: если spec.hw=200, а устройство hw=100 — упростим
+    const targetHw = (data.hardwareVersion === 100 || data.hardwareVersion === 200) ? (data.hardwareVersion as 100|200) : 100;
+    const adjustedSpec = downLevelPatternSpec(spec, targetHw);
+
+    // Используем данные, чтобы удовлетворить линтер и иметь трассировку
+    logger.info('patterns.preview.adjusted', {
+      deviceId,
+      targetHw,
+      originalHw: spec.hardwareVersion,
+      type: adjustedSpec.type,
+      durationRequested: duration ?? null,
+      durationSpec: adjustedSpec.duration,
+    });
+
+    // Здесь могла бы быть отправка команды устройству через FCM/RT c adjustedSpec и duration
     const previewId = `prev_${Date.now()}`;
     return res.status(200).json({ previewId });
   } catch (error) {
