@@ -49,7 +49,12 @@ beforeEach(async () => {
     // Очищаем данные в эмуляторе перед каждым тестом
     // Исключаем тесты, которые создают данные в beforeAll (например, seed.test.ts)
     const testPath = expect.getState().testPath || '';
-    if (!testPath.includes('seed.test.ts') && !testPath.includes('firestore.integration.test.ts')) {
+    const skipClear = (
+      testPath.includes('seed.test.ts') ||
+      testPath.includes('firestore.integration.test.ts') ||
+      testPath.includes('api.webhooks.test.ts')
+    );
+    if (!skipClear) {
       await testEnv.clearFirestore();
     }
   }

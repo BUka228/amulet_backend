@@ -9,12 +9,13 @@ export const adminRouter = express.Router();
 
 // В тестовой среде используем внедрённую аутентификацию (X-Test-Uid/X-Test-Admin)
 // В продакшене — строгая проверка ID Token с custom claim 'admin'
-adminRouter.use((req: Request, res: Response, next: NextFunction) => {
+// Ограничиваем middleware только путями, начинающимися с /admin
+adminRouter.use('/admin', (req: Request, res: Response, next: NextFunction) => {
   if (process.env.NODE_ENV === 'test') return next();
   return authenticateToken({ requireCustomClaim: 'admin' })(req, res, next);
 });
 // Проверка роли admin (работает и в тестовой среде на основе injected customClaims)
-adminRouter.use(requireRole('admin'));
+adminRouter.use('/admin', requireRole('admin'));
 
 const reviewSchema = z.object({
   action: z.enum(['approve', 'reject']),
