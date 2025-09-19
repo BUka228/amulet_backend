@@ -1,1 +1,107 @@
-{}
+{
+  "parameters": {
+    "max_notification_tokens": {
+      "defaultValue": {
+        "value": "20"
+      },
+      "description": "Максимальное количество FCM токенов на пользователя"
+    },
+    "max_devices_per_user": {
+      "defaultValue": {
+        "value": "5"
+      },
+      "description": "Максимальное количество устройств на пользователя"
+    },
+    "max_patterns_per_user": {
+      "defaultValue": {
+        "value": "100"
+      },
+      "description": "Максимальное количество пользовательских паттернов"
+    },
+    "max_practices_per_user": {
+      "defaultValue": {
+        "value": "50"
+      },
+      "description": "Максимальное количество пользовательских практик"
+    },
+    "max_rules_per_user": {
+      "defaultValue": {
+        "value": "20"
+      },
+      "description": "Максимальное количество IFTTT правил на пользователя"
+    },
+    "session_timeout_minutes": {
+      "defaultValue": {
+        "value": "30"
+      },
+      "description": "Таймаут сессии практики в минутах"
+    },
+    "hug_cooldown_seconds": {
+      "defaultValue": {
+        "value": "60"
+      },
+      "description": "Кулдаун между отправкой объятий в секундах"
+    },
+    "pattern_share_cooldown_seconds": {
+      "defaultValue": {
+        "value": "300"
+      },
+      "description": "Кулдаун между шарингом паттернов в секундах"
+    },
+    "webhook_timeout_seconds": {
+      "defaultValue": {
+        "value": "30"
+      },
+      "description": "Таймаут выполнения webhook в секундах"
+    },
+    "outbox_retry_attempts": {
+      "defaultValue": {
+        "value": "5"
+      },
+      "description": "Количество попыток повтора для outbox сообщений"
+    },
+    "outbox_retry_backoff_base_ms": {
+      "defaultValue": {
+        "value": "1000"
+      },
+      "description": "Базовое время backoff для outbox в миллисекундах"
+    }
+  },
+  "parameterGroups": {
+    "limits": {
+      "description": "Лимиты для пользователей",
+      "parameters": {
+        "max_notification_tokens": {},
+        "max_devices_per_user": {},
+        "max_patterns_per_user": {},
+        "max_practices_per_user": {},
+        "max_rules_per_user": {}
+      }
+    },
+    "timeouts": {
+      "description": "Таймауты и кулдауны",
+      "parameters": {
+        "session_timeout_minutes": {},
+        "hug_cooldown_seconds": {},
+        "pattern_share_cooldown_seconds": {},
+        "webhook_timeout_seconds": {}
+      }
+    },
+    "retry": {
+      "description": "Настройки повторов",
+      "parameters": {
+        "outbox_retry_attempts": {},
+        "outbox_retry_backoff_base_ms": {}
+      }
+    }
+  },
+  "conditions": [],
+  "version": {
+    "versionNumber": "1",
+    "updateTime": "2024-01-20T00:00:00.000Z",
+    "updateUser": {
+      "email": "admin@amulet.app"
+    },
+    "description": "Initial configuration"
+  }
+}
