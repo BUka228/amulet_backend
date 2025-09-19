@@ -65,6 +65,18 @@
         "value": "1000"
       },
       "description": "Базовое время backoff для outbox в миллисекундах"
+    },
+    "token_retention_days": {
+      "defaultValue": {
+        "value": "90"
+      },
+      "description": "Количество дней хранения неактивных токенов уведомлений"
+    },
+    "cleanup_batch_size": {
+      "defaultValue": {
+        "value": "100"
+      },
+      "description": "Размер батча для очистки токенов (количество пользователей за раз)"
     }
   },
   "parameterGroups": {
@@ -92,6 +104,13 @@
       "parameters": {
         "outbox_retry_attempts": {},
         "outbox_retry_backoff_base_ms": {}
+      }
+    },
+    "cleanup": {
+      "description": "Настройки фоновой очистки",
+      "parameters": {
+        "token_retention_days": {},
+        "cleanup_batch_size": {}
       }
     }
   },

@@ -26,6 +26,8 @@ const DEFAULT_VALUES = {
   webhook_timeout_seconds: 30,
   outbox_retry_attempts: 5,
   outbox_retry_backoff_base_ms: 1000,
+  token_retention_days: 90,
+  cleanup_batch_size: 100,
 } as const;
 
 type ConfigKey = keyof typeof DEFAULT_VALUES;
@@ -163,6 +165,20 @@ export async function getOutboxRetryAttempts(): Promise<number> {
  */
 export async function getOutboxRetryBackoffBaseMs(): Promise<number> {
   return await getConfigValue<number>('outbox_retry_backoff_base_ms');
+}
+
+/**
+ * Получает количество дней хранения неактивных токенов
+ */
+export async function getTokenRetentionDays(): Promise<number> {
+  return await getConfigValue<number>('token_retention_days');
+}
+
+/**
+ * Получает размер батча для очистки токенов
+ */
+export async function getCleanupBatchSize(): Promise<number> {
+  return await getConfigValue<number>('cleanup_batch_size');
 }
 
 /**

@@ -21,7 +21,9 @@
 
 ## Ресурсы и модели (упрощённо)
 - User: `users/{userId}`
-  - `displayName`, `avatarUrl`, `timezone`, `language`, `consents`, `pushTokens[]`, `createdAt`, `updatedAt`
+  - `displayName`, `avatarUrl`, `timezone`, `language`, `consents`, `createdAt`, `updatedAt`
+  - Подколлекция `notificationTokens/{tokenId}`: FCM токены для push-уведомлений
+    - `userId`, `token`, `platform`, `isActive`, `lastUsedAt`, `createdAt`, `updatedAt`, `appVersion?`
 - Device: `devices/{deviceId}`
   - `ownerId`, `serial`, `hardwareVersion`, `firmwareVersion`, `name`, `batteryLevel`, `status`, `pairedAt`, `settings{brightness, haptics, gestures}`
 - Session: `sessions/{sessionId}`
@@ -147,11 +149,15 @@
 
 ### Уведомления
 - POST /v1/notifications.tokens — Зарегистрировать FCM-токен
-  - body: `{ token, platform }`
+  - body: `{ token, platform, appVersion? }`
   - 200: `{ ok: true }`
 - DELETE /v1/notifications.tokens — Отвязать FCM-токен
   - body: `{ token }`
   - 200: `{ ok: true }`
+
+**Фоновая очистка токенов:**
+- CRON-задача `scheduledCleanup` (еженедельно) удаляет неактивные токены старше 90 дней
+- Автоматическая деактивация токенов при ошибках FCM доставки
 
 ### OTA / прошивки
 - GET /v1/ota/firmware/latest?hardware=200&currentFirmware=205 — Проверка обновления
@@ -174,6 +180,7 @@
 
 ## Firestore: основные коллекции и индексы
 - `users` (поиск по email через Auth; в БД индекс по `displayName`, `language`)
+  - `users/{userId}/notificationTokens` (индексы: `userId`, `isActive`, `lastUsedAt`)
 - `devices` (индексы: `ownerId`, `serial` уникальный)
 - `pairs` (составной индекс: `memberIds` array-contains, `status`)
 - `hugs` (индексы: `fromUserId`, `toUserId`, `createdAt desc`, `inReplyToHugId`)
@@ -283,8 +290,10 @@ Content-Type: application/json
 - `apiPairs` — pairs.*
 - `apiLibrary` — practices/patterns
 - `apiRules` — rules/webhooks
+- `apiNotifications` — notifications.tokens
 - `apiOta` — ota/firmware
 - `apiTelemetry` — telemetry/events
+- `scheduledCleanup` — фоновые задачи (очистка токенов)
 - `adminUsers` — админ-операции над пользователями
 - `adminContent` — модерация/публикация контента и паттернов
 - `adminDevices` — управление устройствами и прошивками

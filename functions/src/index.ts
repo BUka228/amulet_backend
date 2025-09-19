@@ -16,6 +16,7 @@ import { api } from './api/test';
 // Импорт фоновых функций
 import { processUserDeletion } from './background/deleteUser';
 import { processOutbox } from './background/outboxWorker';
+import { scheduledCleanup } from './background/scheduledCleanup';
 
 // For cost control, you can set the maximum number of containers that can be
 // running at the same time. This helps mitigate the impact of unexpected
@@ -35,5 +36,6 @@ export { api };
 // Экспорт фоновых функций
 export { processUserDeletion };
 export { processOutbox };
+export { scheduledCleanup };
 
 logger.info('Amulet Backend functions loaded', {structuredData: true});
