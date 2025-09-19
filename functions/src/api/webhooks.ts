@@ -4,6 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../core/firebase';
 import * as logger from 'firebase-functions/logger';
 import crypto from 'crypto';
+import { Rule } from '../types/firestore';
 
 export const webhooksRouter = express.Router();
 // Вебхуки публичны и не требуют аутентификации
@@ -103,11 +104,11 @@ async function processWebhook(integrationKey: string, data: Record<string, unkno
       .where('trigger.type', '==', 'webhook')
       .get();
 
-    const matchingRules = rulesSnapshot.docs
-      .map(doc => ({ id: doc.id, ...doc.data() } as any))
-      .filter((rule: any) => {
+    const matchingRules: Rule[] = rulesSnapshot.docs
+      .map((doc) => ({ id: doc.id, ...(doc.data() as Omit<Rule, 'id'>) }))
+      .filter((rule: Rule) => {
         const triggerParams = rule.trigger?.params || {};
-        return triggerParams.integrationKey === integrationKey;
+        return (triggerParams as Record<string, unknown>).integrationKey === integrationKey;
       });
 
     // Выполняем действия для каждого подходящего правила
@@ -141,7 +142,7 @@ async function processWebhook(integrationKey: string, data: Record<string, unkno
 }
 
 // Выполнение действия правила
-async function executeRuleAction(rule: any, webhookData: Record<string, unknown>): Promise<void> {
+async function executeRuleAction(rule: Rule, webhookData: Record<string, unknown>): Promise<void> {
   const action = rule.action;
   
   switch (action.type) {

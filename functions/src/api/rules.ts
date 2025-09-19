@@ -61,7 +61,8 @@ function validateBody(schema: 'create' | 'update') {
 // GET /rules - Список правил пользователя
 rulesRouter.get('/rules', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).auth?.user?.uid || (req as any).auth?.uid || (req.headers['x-test-uid'] as string);
+    const legacyUid = (req as Request & { auth?: { uid?: string } }).auth?.uid;
+    const userId = req.auth?.user?.uid || legacyUid || (req.headers['x-test-uid'] as string);
     if (!userId) {
       return sendError(res, { code: 'unauthenticated', message: 'User not authenticated' });
     }
@@ -72,7 +73,7 @@ rulesRouter.get('/rules', async (req: Request, res: Response) => {
       .orderBy('createdAt', 'desc')
       .get();
 
-    const rules: Rule[] = rulesSnapshot.docs.map(doc => ({
+    const rules: Rule[] = rulesSnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
       createdAt: doc.data().createdAt,
@@ -81,7 +82,8 @@ rulesRouter.get('/rules', async (req: Request, res: Response) => {
 
     res.json({ items: rules });
   } catch (error) {
-    logger.error('Failed to fetch rules', { error, userId: (req as any).auth?.uid });
+    const legacyErrUid = (req as Request & { auth?: { uid?: string } }).auth?.uid;
+    logger.error('Failed to fetch rules', { error, userId: req.auth?.user?.uid ?? legacyErrUid });
     return sendError(res, { code: 'internal', message: 'Failed to fetch rules' });
   }
 });
@@ -89,7 +91,8 @@ rulesRouter.get('/rules', async (req: Request, res: Response) => {
 // POST /rules - Создать правило
 rulesRouter.post('/rules', validateBody('create'), async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).auth?.user?.uid || (req as any).auth?.uid || (req.headers['x-test-uid'] as string);
+    const legacyUid = (req as Request & { auth?: { uid?: string } }).auth?.uid;
+    const userId = req.auth?.user?.uid || legacyUid || (req.headers['x-test-uid'] as string);
     if (!userId) {
       return sendError(res, { code: 'unauthenticated', message: 'User not authenticated' });
     }
@@ -119,7 +122,8 @@ rulesRouter.post('/rules', validateBody('create'), async (req: Request, res: Res
     logger.info('Rule created', { ruleId: rule.id, userId });
     res.status(201).json({ rule });
   } catch (error) {
-    logger.error('Failed to create rule', { error, userId: (req as any).auth?.uid });
+    const legacyErrUid = (req as Request & { auth?: { uid?: string } }).auth?.uid;
+    logger.error('Failed to create rule', { error, userId: req.auth?.user?.uid ?? legacyErrUid });
     return sendError(res, { code: 'internal', message: 'Failed to create rule' });
   }
 });
@@ -127,7 +131,8 @@ rulesRouter.post('/rules', validateBody('create'), async (req: Request, res: Res
 // PATCH /rules/:ruleId - Обновить правило
 rulesRouter.patch('/rules/:ruleId', validateBody('update'), async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).auth?.user?.uid || (req as any).auth?.uid || (req.headers['x-test-uid'] as string);
+    const legacyUid = (req as Request & { auth?: { uid?: string } }).auth?.uid;
+    const userId = req.auth?.user?.uid || legacyUid || (req.headers['x-test-uid'] as string);
     const { ruleId } = req.params;
     
     if (!userId) {
@@ -163,7 +168,8 @@ rulesRouter.patch('/rules/:ruleId', validateBody('update'), async (req: Request,
     logger.info('Rule updated', { ruleId, userId });
     res.json({ rule });
   } catch (error) {
-    logger.error('Failed to update rule', { error, ruleId: req.params.ruleId, userId: (req as any).auth?.uid });
+    const legacyErrUid = (req as Request & { auth?: { uid?: string } }).auth?.uid;
+    logger.error('Failed to update rule', { error, ruleId: req.params.ruleId, userId: req.auth?.user?.uid ?? legacyErrUid });
     return sendError(res, { code: 'internal', message: 'Failed to update rule' });
   }
 });
@@ -171,7 +177,8 @@ rulesRouter.patch('/rules/:ruleId', validateBody('update'), async (req: Request,
 // DELETE /rules/:ruleId - Удалить правило
 rulesRouter.delete('/rules/:ruleId', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).auth?.user?.uid || (req as any).auth?.uid || (req.headers['x-test-uid'] as string);
+    const legacyUid = (req as Request & { auth?: { uid?: string } }).auth?.uid;
+    const userId = req.auth?.user?.uid || legacyUid || (req.headers['x-test-uid'] as string);
     const { ruleId } = req.params;
     
     if (!userId) {
@@ -195,7 +202,8 @@ rulesRouter.delete('/rules/:ruleId', async (req: Request, res: Response) => {
     logger.info('Rule deleted', { ruleId, userId });
     res.json({ ok: true });
   } catch (error) {
-    logger.error('Failed to delete rule', { error, ruleId: req.params.ruleId, userId: (req as any).auth?.uid });
+    const legacyErrUid = (req as Request & { auth?: { uid?: string } }).auth?.uid;
+    logger.error('Failed to delete rule', { error, ruleId: req.params.ruleId, userId: req.auth?.user?.uid ?? legacyErrUid });
     return sendError(res, { code: 'internal', message: 'Failed to delete rule' });
   }
 });
