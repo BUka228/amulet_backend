@@ -249,6 +249,7 @@ export interface NotificationToken extends BaseDocument {
   platform: 'ios' | 'android' | 'web';
   isActive: boolean;
   lastUsedAt: Timestamp;
+  appVersion?: string;
 }
 
 // Webhook Collection (интеграции)

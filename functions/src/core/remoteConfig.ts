@@ -6,11 +6,10 @@
  */
 
 import { getRemoteConfig } from 'firebase-admin/remote-config';
-import { app } from './firebase';
 import * as logger from 'firebase-functions/logger';
 
 // Кэш для конфигурации (обновляется при каждом запросе)
-let configCache: Record<string, any> = {};
+let configCache: Record<string, unknown> = {};
 let lastFetchTime = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 минут
 
@@ -34,7 +33,7 @@ type ConfigKey = keyof typeof DEFAULT_VALUES;
 /**
  * Получает значение из Remote Config с fallback на значение по умолчанию
  */
-export async function getConfigValue<T = any>(key: ConfigKey): Promise<T> {
+export async function getConfigValue<T = unknown>(key: ConfigKey): Promise<T> {
   // В тестовой среде проверяем кэш, иначе возвращаем значения по умолчанию
   if (process.env.NODE_ENV === 'test' || process.env.FIRESTORE_EMULATOR_HOST) {
     return (configCache[key] !== undefined ? configCache[key] : DEFAULT_VALUES[key]) as T;
@@ -48,7 +47,7 @@ export async function getConfigValue<T = any>(key: ConfigKey): Promise<T> {
     }
 
     // Получаем конфигурацию из Remote Config
-    const remoteConfig = getRemoteConfig(app);
+    const remoteConfig = getRemoteConfig();
     const template = await remoteConfig.getTemplate();
     
     // Обновляем кэш
@@ -57,7 +56,7 @@ export async function getConfigValue<T = any>(key: ConfigKey): Promise<T> {
       const defaultValue = param.defaultValue;
       if (defaultValue) {
         // Парсим значение в зависимости от типа
-        let value: any = defaultValue.value;
+        let value: unknown = 'value' in defaultValue ? defaultValue.value : defaultValue;
         
         // Пытаемся распарсить как JSON для сложных типов
         if (typeof value === 'string') {
@@ -177,6 +176,6 @@ export function clearConfigCache(): void {
 /**
  * Устанавливает значение в кэш (для тестов)
  */
-export function setConfigValue(key: ConfigKey, value: any): void {
+export function setConfigValue(key: ConfigKey, value: unknown): void {
   configCache[key] = value;
 }

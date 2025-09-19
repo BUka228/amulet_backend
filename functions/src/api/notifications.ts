@@ -43,6 +43,7 @@ async function createToken(userId: string, token: string, platform: 'ios' | 'and
     lastUsedAt: timestamp,
     createdAt: timestamp,
     updatedAt: timestamp,
+    ...(appVersion && { appVersion }),
   };
   
   const docRef = await tokensRef.add(tokenData);
