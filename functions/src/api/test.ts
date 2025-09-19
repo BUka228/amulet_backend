@@ -17,6 +17,7 @@ import { statsRouter } from './stats';
 import { adminRouter } from './admin';
 import { rulesRouter } from './rules';
 import { webhooksRouter } from './webhooks';
+import { notificationsRouter } from './notifications';
 // no-op
 
 const app = express();
@@ -72,6 +73,7 @@ app.use('/v1', statsRouter);
 app.use('/v1', adminRouter);
 app.use('/v1', rulesRouter);
 app.use('/v1', webhooksRouter);
+app.use('/v1', notificationsRouter);
 
 // Защищенный endpoint (требует аутентификации)
 app.get('/protected', authenticateToken(), (req: Request, res: Response) => {
