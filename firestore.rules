@@ -49,6 +49,18 @@ service cloud.firestore {
                        // Минимально необходимые поля для инициализации профиля
                        request.resource.data.keys().hasAll(['displayName', 'consents', 'createdAt', 'updatedAt']);
       allow delete: if false; // Account deletion handled by Cloud Functions
+      
+      // Push tokens subcollection (user-specific)
+      match /notificationTokens/{tokenId} {
+        allow read, write: if isOwner(userId);
+        allow create: if isOwner(userId) &&
+                         request.resource.data.keys().hasAll(['userId', 'token', 'platform', 'isActive', 'createdAt', 'updatedAt', 'lastUsedAt']) &&
+                         request.resource.data.userId == userId &&
+                         request.resource.data.token is string &&
+                         request.resource.data.token.size() >= 10 &&
+                         request.resource.data.platform in ['ios', 'android', 'web'] &&
+                         request.resource.data.isActive is bool;
+      }
     }
 
     // Devices collection
@@ -175,11 +187,5 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
 
-    // Push tokens collection (user-specific)
-    match /pushTokens/{tokenId} {
-      allow read, write: if isOwner(resource.data.userId);
-      allow create: if isSignedIn() &&
-                       request.auth.uid == request.resource.data.userId;
-    }
   }
 }
