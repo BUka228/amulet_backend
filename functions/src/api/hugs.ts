@@ -7,6 +7,7 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { getMessage } from '../core/i18n';
 import { z } from 'zod';
 import * as logger from 'firebase-functions/logger';
+import { logTokenDeletion, TokenAuditContext } from '../core/auditLogger';
 
 // Валидация входа для /hugs.send
 const hugSendSchema = z
@@ -173,12 +174,45 @@ hugsRouter.post('/hugs.send', validateBody('send'), async (req: Request, res: Re
             }
           });
           if (deadTokens.length > 0) {
+            // Удаляем невалидные токены из подколлекции и обновляем денормализованный массив
             await Promise.all(
               deadTokens.map(async (t) => {
                 try {
                   const q = await db.collection('notificationTokens').where('token', '==', t).limit(50).get();
                   await Promise.all(q.docs.map((d) => d.ref.delete()));
-                  logger.info('Removed invalid FCM token', { token: t, userId: resolvedToUserId, hugId: hugDocRef.id });
+                  
+                  // Обновляем денормализованный массив pushTokens в документе пользователя
+                  const userRef = db.collection('users').doc(resolvedToUserId);
+                  await userRef.update({
+                    pushTokens: FieldValue.arrayRemove(t)
+                  });
+                  
+                  // Логируем удаление невалидного токена
+                  const auditContext: TokenAuditContext = {
+                    userId: resolvedToUserId,
+                    tokenId: `fcm-cleanup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    token: t,
+                    reason: 'fcm_invalid_token',
+                    userAgent: req.headers['user-agent'] as string,
+                    ipAddress: req.ip || req.connection.remoteAddress,
+                    requestId: req.headers['x-request-id'] as string,
+                    source: 'api'
+                  };
+                  
+                  // Получаем предыдущее состояние токена для аудита
+                  const previousState = {
+                    isActive: true,
+                    lastUsedAt: { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 }
+                  };
+                  
+                  await logTokenDeletion(auditContext, previousState);
+                  
+                  logger.info('Removed invalid FCM token', { 
+                    token: t, 
+                    userId: resolvedToUserId, 
+                    hugId: hugDocRef.id,
+                    updatedPushTokens: true
+                  });
                 } catch (cleanupErr) {
                   logger.error('Failed to cleanup invalid FCM token', {
                     token: t,

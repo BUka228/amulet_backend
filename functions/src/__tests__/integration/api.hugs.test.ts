@@ -5,6 +5,7 @@ import * as admin from 'firebase-admin';
 import { applyBaseMiddlewares, errorHandler } from '../../core/http';
 import { i18nMiddleware } from '../../core/i18n';
 import hugsRouter from '../../api/hugs';
+import { getUserAuditLogs } from '../../core/auditLogger';
 
 // Мокаем FCM, чтобы не требовать реальный доступ к Firebase Cloud Messaging
 jest.mock('firebase-admin/messaging', () => {
@@ -237,6 +238,137 @@ describe('Hugs API (/v1/hugs*)', () => {
     // Должен остаться хотя бы один валидный токен, а not-registered удалён
     expect(tokens).toContain('fcm_token_bob');
     expect(tokens).not.toContain('fcm_token_bob_2');
+  });
+
+  it('Updates pushTokens array when removing invalid FCM tokens', async () => {
+    const db = admin.firestore();
+    
+    // Создаем пользователя с денормализованным массивом pushTokens
+    const userRef = db.collection('users').doc(bob.uid);
+    await userRef.set({
+      id: bob.uid,
+      pushTokens: ['fcm_token_bob', 'fcm_token_bob_2', 'fcm_token_bob_3'],
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Добавляем токены в подколлекцию
+    await db.collection('notificationTokens').doc('tok_bob_2').set({ 
+      id: 'tok_bob_2', 
+      userId: bob.uid, 
+      token: 'fcm_token_bob_2', 
+      isActive: true, 
+      createdAt: admin.firestore.FieldValue.serverTimestamp(), 
+      updatedAt: admin.firestore.FieldValue.serverTimestamp() 
+    });
+    await db.collection('notificationTokens').doc('tok_bob_3').set({ 
+      id: 'tok_bob_3', 
+      userId: bob.uid, 
+      token: 'fcm_token_bob_3', 
+      isActive: true, 
+      createdAt: admin.firestore.FieldValue.serverTimestamp(), 
+      updatedAt: admin.firestore.FieldValue.serverTimestamp() 
+    });
+
+    // Настроим mock ответа FCM: один success, два not-registered
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const messagingMod = require('firebase-admin/messaging');
+    const getMessagingMock = messagingMod.getMessaging as jest.Mock;
+    getMessagingMock.mockReturnValueOnce({
+      sendEachForMulticast: jest.fn(async () => ({
+        successCount: 1,
+        failureCount: 2,
+        responses: [
+          { success: true },
+          { success: false, error: { code: 'messaging/registration-token-not-registered' } },
+          { success: false, error: { code: 'messaging/registration-token-not-registered' } },
+        ],
+      })),
+    });
+
+    await agent
+      .post('/v1/hugs.send')
+      .set({ 'X-Test-Uid': alice.uid })
+      .send({ pairId: 'pair_ab', emotion: { color: '#abcdef', patternId: 'p' } })
+      .expect(200);
+
+    // Проверяем, что невалидные токены удалены из подколлекции
+    const remaining = await db.collection('notificationTokens').where('userId', '==', bob.uid).get();
+    const tokens = remaining.docs.map((d) => d.get('token')) as string[];
+    expect(tokens).toContain('fcm_token_bob');
+    expect(tokens).not.toContain('fcm_token_bob_2');
+    expect(tokens).not.toContain('fcm_token_bob_3');
+
+    // Проверяем, что денормализованный массив pushTokens обновлен
+    const userDoc = await userRef.get();
+    const userData = userDoc.data();
+    const pushTokens = userData?.pushTokens || [];
+    expect(pushTokens).toContain('fcm_token_bob');
+    expect(pushTokens).not.toContain('fcm_token_bob_2');
+    expect(pushTokens).not.toContain('fcm_token_bob_3');
+  });
+
+  it('Logs token deletion in audit logs when removing invalid FCM tokens', async () => {
+    const db = admin.firestore();
+    
+    // Создаем пользователя с денормализованным массивом pushTokens
+    const userRef = db.collection('users').doc(bob.uid);
+    await userRef.set({
+      id: bob.uid,
+      pushTokens: ['fcm_token_bob', 'fcm_token_bob_2'],
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Добавляем токены в подколлекцию
+    await db.collection('notificationTokens').doc('tok_bob_2').set({ 
+      id: 'tok_bob_2', 
+      userId: bob.uid, 
+      token: 'fcm_token_bob_2', 
+      isActive: true, 
+      createdAt: admin.firestore.FieldValue.serverTimestamp(), 
+      updatedAt: admin.firestore.FieldValue.serverTimestamp() 
+    });
+
+    // Настроим mock ответа FCM: один success, один not-registered
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const messagingMod = require('firebase-admin/messaging');
+    const getMessagingMock = messagingMod.getMessaging as jest.Mock;
+    getMessagingMock.mockReturnValueOnce({
+      sendEachForMulticast: jest.fn(async () => ({
+        successCount: 1,
+        failureCount: 1,
+        responses: [
+          { success: true },
+          { success: false, error: { code: 'messaging/registration-token-not-registered' } },
+        ],
+      })),
+    });
+
+    await agent
+      .post('/v1/hugs.send')
+      .set({ 'X-Test-Uid': alice.uid })
+      .set('User-Agent', 'TestApp/1.0.0')
+      .set('X-Request-ID', 'test-request-456')
+      .send({ pairId: 'pair_ab', emotion: { color: '#abcdef', patternId: 'p' } })
+      .expect(200);
+
+    // Проверяем аудит-логи
+    const auditLogs = await getUserAuditLogs(bob.uid);
+    const deletionLogs = auditLogs.filter(log => log.action === 'token_delete');
+    
+    expect(deletionLogs).toHaveLength(1);
+    
+    const deletionLog = deletionLogs[0];
+    expect(deletionLog.userId).toBe(bob.uid);
+    expect(deletionLog.resourceType).toBe('notification_token');
+    expect(deletionLog.details.token).toBe('fcm_toke...'); // Маскированный токен
+    expect(deletionLog.details.reason).toBe('fcm_invalid_token');
+    expect(deletionLog.details.previousState?.isActive).toBe(true);
+    expect(deletionLog.metadata.userAgent).toBe('TestApp/1.0.0');
+    expect(deletionLog.metadata.requestId).toBe('test-request-456');
+    expect(deletionLog.metadata.source).toBe('api');
+    expect(deletionLog.severity).toBe('warning');
   });
 });
 
