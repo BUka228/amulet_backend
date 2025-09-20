@@ -41,6 +41,10 @@
   - `ownerId`, `trigger{type, params}`, `action{type, params}`, `enabled`, `schedule?`
 - Telemetry: `telemetry/{docId}` (агрегаты/сырые события по сабколлекциям)
 - OTA: `firmware/{version}` метаданные и доступ из Storage
+- AuditLog: `auditLogs/{logId}` (аудит-логи изменений токенов уведомлений)
+  - `userId`, `action{token_register|token_deactivate|token_reactivate|token_cleanup|token_delete}`, `resourceType`, `resourceId`
+  - `details{token?, platform?, appVersion?, reason?, previousState?, newState?}`
+  - `metadata{userAgent?, ipAddress?, requestId?, source}`, `severity{info|warning|error}`, `createdAt`, `updatedAt`
 
 ## HTTPS Endpoints (Cloud Functions)
 База: `https://<region>-<project>.cloudfunctions.net/api` (или `https://api.amulet.app/v1` через прокси)

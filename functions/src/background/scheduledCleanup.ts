@@ -3,6 +3,7 @@ import { logger } from 'firebase-functions';
 import { db } from '../core/firebase';
 import { getTokenRetentionDays, getCleanupBatchSize } from '../core/remoteConfig';
 import { FieldValue } from 'firebase-admin/firestore';
+import { logTokenCleanup, TokenAuditContext } from '../core/auditLogger';
 
 /**
  * Фоновая задача для очистки старых/неактивных токенов уведомлений
@@ -84,6 +85,27 @@ export const scheduledCleanup = onSchedule({
           for (let i = 0; i < tokensToDelete.length; i += 20) {
             const batch = db.batch();
             const batchTokens = tokensToDelete.slice(i, i + 20);
+            
+            // Логируем аудит для каждого токена перед удалением
+            for (const tokenDoc of batchTokens) {
+              const tokenData = tokenDoc.data();
+              const auditContext: TokenAuditContext = {
+                userId,
+                tokenId: tokenDoc.id,
+                token: tokenData.token,
+                platform: tokenData.platform,
+                appVersion: tokenData.appVersion,
+                reason: 'cleanup_old_inactive',
+                source: 'background',
+              };
+              
+              const previousState = {
+                isActive: tokenData.isActive,
+                lastUsedAt: tokenData.lastUsedAt,
+              };
+              
+              await logTokenCleanup(auditContext, previousState);
+            }
             
             batchTokens.forEach((tokenDoc) => {
               const tokenData = tokenDoc.data();

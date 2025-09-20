@@ -272,6 +272,35 @@ export interface AdminAction extends BaseDocument {
   reason?: string;
 }
 
+// Audit Log Collection (аудит безопасности)
+export interface AuditLog extends BaseDocument {
+  userId: string;
+  action: 'token_register' | 'token_deactivate' | 'token_reactivate' | 'token_cleanup' | 'token_delete';
+  resourceType: 'notification_token';
+  resourceId: string;
+  details: {
+    token?: string; // Маскированный токен (первые 8 символов + ...)
+    platform?: 'ios' | 'android' | 'web';
+    appVersion?: string;
+    reason?: string; // Причина действия (например, 'user_request', 'cleanup', 'invalid_token')
+    previousState?: {
+      isActive: boolean;
+      lastUsedAt: Timestamp;
+    };
+    newState?: {
+      isActive: boolean;
+      lastUsedAt: Timestamp;
+    };
+  };
+  metadata: {
+    userAgent?: string;
+    ipAddress?: string;
+    requestId?: string;
+    source: 'api' | 'background' | 'admin';
+  };
+  severity: 'info' | 'warning' | 'error';
+}
+
 // Indexes для Firestore
 export interface FirestoreIndex {
   collectionGroup: string;

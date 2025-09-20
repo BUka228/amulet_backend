@@ -7,6 +7,12 @@ import { NotificationToken } from '../types/firestore';
 import { getMaxNotificationTokens } from '../core/remoteConfig';
 import * as logger from 'firebase-functions/logger';
 import { FieldValue } from 'firebase-admin/firestore';
+import { 
+  logTokenRegistration, 
+  logTokenDeactivation, 
+  logTokenReactivation,
+  TokenAuditContext 
+} from '../core/auditLogger';
 
 const registerSchema = z.object({
   token: z.string().min(10).max(4096),
@@ -19,6 +25,29 @@ const unregisterSchema = z.object({
 }).strict();
 
 // Утилиты для работы с токенами
+function createAuditContext(
+  req: Request, 
+  userId: string, 
+  tokenId: string, 
+  token: string, 
+  platform?: 'ios' | 'android' | 'web',
+  appVersion?: string,
+  reason?: string
+): TokenAuditContext {
+  return {
+    userId,
+    tokenId,
+    token,
+    platform,
+    appVersion,
+    reason,
+    userAgent: req.get('User-Agent'),
+    ipAddress: req.ip || req.connection.remoteAddress,
+    requestId: req.headers['x-request-id'] as string,
+    source: 'api',
+  };
+}
+
 async function findTokenByValue(userId: string, token: string): Promise<NotificationToken | null> {
   const tokensRef = db.collection('users').doc(userId).collection('notificationTokens');
   const snapshot = await tokensRef.where('token', '==', token).limit(1).get();
@@ -31,7 +60,13 @@ async function findTokenByValue(userId: string, token: string): Promise<Notifica
   return { id: doc.id, ...doc.data() } as NotificationToken;
 }
 
-async function createToken(userId: string, token: string, platform: 'ios' | 'android' | 'web', appVersion?: string): Promise<NotificationToken> {
+async function createToken(
+  userId: string, 
+  token: string, 
+  platform: 'ios' | 'android' | 'web', 
+  appVersion?: string,
+  auditContext?: TokenAuditContext
+): Promise<NotificationToken> {
   const tokensRef = db.collection('users').doc(userId).collection('notificationTokens');
   const userRef = db.collection('users').doc(userId);
   const now = new Date();
@@ -58,6 +93,15 @@ async function createToken(userId: string, token: string, platform: 'ios' | 'and
     updatedAt: timestamp,
   });
   
+  // Логируем аудит
+  if (auditContext) {
+    const newState = {
+      isActive: true,
+      lastUsedAt: timestamp,
+    };
+    await logTokenRegistration({ ...auditContext, tokenId: newToken.id }, newState);
+  }
+  
   return newToken;
 }
 
@@ -72,11 +116,24 @@ async function updateTokenLastUsed(tokenId: string, userId: string): Promise<voi
   });
 }
 
-async function deactivateToken(tokenId: string, userId: string, token: string): Promise<void> {
+async function deactivateToken(
+  tokenId: string, 
+  userId: string, 
+  token: string,
+  auditContext?: TokenAuditContext
+): Promise<void> {
   const tokenRef = db.collection('users').doc(userId).collection('notificationTokens').doc(tokenId);
   const userRef = db.collection('users').doc(userId);
   const now = new Date();
   const timestamp = { seconds: Math.floor(now.getTime() / 1000), nanoseconds: (now.getTime() % 1000) * 1000000 };
+  
+  // Получаем текущее состояние токена для аудита
+  const tokenDoc = await tokenRef.get();
+  const currentTokenData = tokenDoc.data() as NotificationToken;
+  const previousState = {
+    isActive: currentTokenData.isActive,
+    lastUsedAt: currentTokenData.lastUsedAt,
+  };
   
   // Деактивируем токен в подколлекции
   await tokenRef.update({
@@ -89,6 +146,15 @@ async function deactivateToken(tokenId: string, userId: string, token: string): 
     pushTokens: FieldValue.arrayRemove(token),
     updatedAt: timestamp,
   });
+  
+  // Логируем аудит
+  if (auditContext) {
+    const newState = {
+      isActive: false,
+      lastUsedAt: timestamp,
+    };
+    await logTokenDeactivation({ ...auditContext, tokenId }, previousState, newState);
+  }
 }
 
 async function getActiveTokensCount(userId: string): Promise<number> {
@@ -151,6 +217,12 @@ notificationsRouter.post('/notifications.tokens', validateBody('register'), asyn
         const now = new Date();
         const timestamp = { seconds: Math.floor(now.getTime() / 1000), nanoseconds: (now.getTime() % 1000) * 1000000 };
         
+        // Получаем предыдущее состояние для аудита
+        const previousState = {
+          isActive: existingToken.isActive,
+          lastUsedAt: existingToken.lastUsedAt,
+        };
+        
         // Активируем токен в подколлекции
         await tokenRef.update({ isActive: true, updatedAt: timestamp });
         
@@ -159,6 +231,14 @@ notificationsRouter.post('/notifications.tokens', validateBody('register'), asyn
           pushTokens: FieldValue.arrayUnion(token),
           updatedAt: timestamp,
         });
+        
+        // Логируем реактивацию
+        const auditContext = createAuditContext(req, uid, existingToken.id, token, detectedPlatform, appVersion, 'user_request');
+        const newState = {
+          isActive: true,
+          lastUsedAt: timestamp,
+        };
+        await logTokenReactivation(auditContext, previousState, newState);
       }
       logger.info('FCM token reactivated', { userId: uid, tokenId: existingToken.id, platform: detectedPlatform });
       return res.status(200).json({ ok: true });
@@ -175,7 +255,8 @@ notificationsRouter.post('/notifications.tokens', validateBody('register'), asyn
     }
     
     // Создаем новый токен
-    const newToken = await createToken(uid, token, detectedPlatform, appVersion);
+    const auditContext = createAuditContext(req, uid, '', token, detectedPlatform, appVersion, 'user_request');
+    const newToken = await createToken(uid, token, detectedPlatform, appVersion, auditContext);
     logger.info('FCM token registered', { 
       userId: uid, 
       tokenId: newToken.id, 
@@ -219,7 +300,8 @@ notificationsRouter.delete('/notifications.tokens', validateBody('unregister'), 
     }
     
     // Деактивируем токен вместо удаления (сохраняем историю)
-    await deactivateToken(existingToken.id, uid, token);
+    const auditContext = createAuditContext(req, uid, existingToken.id, token, existingToken.platform, existingToken.appVersion, 'user_request');
+    await deactivateToken(existingToken.id, uid, token, auditContext);
     
     logger.info('FCM token deactivated', { 
       userId: uid, 
