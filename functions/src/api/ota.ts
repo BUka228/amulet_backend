@@ -154,28 +154,31 @@ otaRouter.post('/devices/:id/firmware/report', validateFirmwareReport(), async (
 
     const now = FieldValue.serverTimestamp();
     
-    // Создаём отчёт об установке
-    const reportRef = db.collection('firmwareReports').doc();
-    await reportRef.set({
-      id: reportRef.id,
-      deviceId,
-      ownerId: uid,
-      fromVersion,
-      toVersion,
-      status,
-      errorCode: errorCode || null,
-      errorMessage: errorMessage || null,
-      reportedAt: now,
-      createdAt: now,
-    });
-
-    // Обновляем версию прошивки на устройстве при успешной установке
-    if (status === 'success') {
-      await deviceRef.update({
-        firmwareVersion: toVersion,
-        updatedAt: now,
+    // Выполняем операции в транзакции для обеспечения атомарности
+    await db.runTransaction(async (transaction) => {
+      // Создаём отчёт об установке
+      const reportRef = db.collection('firmwareReports').doc();
+      transaction.set(reportRef, {
+        id: reportRef.id,
+        deviceId,
+        ownerId: uid,
+        fromVersion,
+        toVersion,
+        status,
+        errorCode: errorCode || null,
+        errorMessage: errorMessage || null,
+        reportedAt: now,
+        createdAt: now,
       });
-    }
+
+      // Обновляем версию прошивки на устройстве при успешной установке
+      if (status === 'success') {
+        transaction.update(deviceRef, {
+          firmwareVersion: toVersion,
+          updatedAt: now,
+        });
+      }
+    });
 
     // Логируем результат для мониторинга
     logger.info('Firmware report received', {
