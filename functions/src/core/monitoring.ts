@@ -9,7 +9,7 @@
  * - Алерты по SLO
  */
 
-// import { MetricServiceClient } from '@google-cloud/monitoring'; // Временно отключено
+import { MetricServiceClient, AlertPolicyServiceClient } from '@google-cloud/monitoring';
 import { Request, Response } from 'express';
 
 export interface MetricData {
@@ -28,12 +28,16 @@ export interface SLOConfig {
 
 class MonitoringService {
   private projectId: string;
+  private client: MetricServiceClient;
+  private alertClient: AlertPolicyServiceClient;
 
   constructor() {
     this.projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT || '';
     if (!this.projectId) {
       console.warn('GOOGLE_CLOUD_PROJECT not set, monitoring will be disabled');
     }
+    this.client = new MetricServiceClient();
+    this.alertClient = new AlertPolicyServiceClient();
   }
 
   /**
@@ -210,11 +214,13 @@ class MonitoringService {
         ],
       };
 
-      // В реальном приложении здесь был бы вызов к Cloud Monitoring API
-      // this.client.createTimeSeries({ name: `projects/${this.projectId}`, timeSeries: [timeSeries] });
-      
-      // Для демонстрации логируем метрику
-      console.log('Metric recorded:', JSON.stringify(timeSeries, null, 2));
+      // Отправляем метрику в Cloud Monitoring
+      this.client.createTimeSeries({ 
+        name: `projects/${this.projectId}`, 
+        timeSeries: [timeSeries] 
+      }).catch((error) => {
+        console.error('Failed to record metric:', error);
+      });
     } catch (error) {
       console.error('Failed to record metric:', error);
     }
@@ -256,7 +262,7 @@ class MonitoringService {
             displayName: `${config.displayName} condition`,
             conditionThreshold: {
               filter: `metric.type="${config.metricType}"`,
-              comparison: config.comparison,
+              comparison: config.comparison as 'COMPARISON_GT' | 'COMPARISON_GE' | 'COMPARISON_LT' | 'COMPARISON_LE' | 'COMPARISON_EQ' | 'COMPARISON_NE',
               thresholdValue: config.threshold,
               duration: {
                 seconds: config.duration,
@@ -266,8 +272,8 @@ class MonitoringService {
                   alignmentPeriod: {
                     seconds: 300, // 5 минут
                   },
-                  perSeriesAligner: 'ALIGN_RATE',
-                  crossSeriesReducer: 'REDUCE_SUM',
+                  perSeriesAligner: 'ALIGN_RATE' as const,
+                  crossSeriesReducer: 'REDUCE_SUM' as const,
                 },
               ],
             },
@@ -278,13 +284,14 @@ class MonitoringService {
             seconds: 3600, // 1 час
           },
         },
-        enabled: true,
+        enabled: { value: true },
       };
 
-      // В реальном приложении здесь был бы вызов к Cloud Monitoring API
-      // await this.client.createAlertPolicy({ name: `projects/${this.projectId}`, alertPolicy });
-      
-      console.log('Alert policy created:', JSON.stringify(alertPolicy, null, 2));
+      // Создаем алерт политику в Cloud Monitoring
+      await this.alertClient.createAlertPolicy({ 
+        name: `projects/${this.projectId}`, 
+        alertPolicy 
+      });
     } catch (error) {
       console.error('Failed to create alert policy:', error);
     }

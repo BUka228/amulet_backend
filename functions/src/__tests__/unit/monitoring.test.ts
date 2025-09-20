@@ -12,6 +12,9 @@
 import { Request, Response } from 'express';
 import { monitoringService, metricsMiddleware, MetricData, SLOConfig, MonitoringService } from '../../core/monitoring';
 
+// Мокаем @google-cloud/monitoring
+jest.mock('@google-cloud/monitoring');
+
 // Мокаем console для проверки логов
 const mockConsole = {
   log: jest.fn(),
@@ -71,13 +74,33 @@ describe('MonitoringService', () => {
         },
       };
 
-      // Поскольку MetricServiceClient отключен, метод должен логировать
+      // Теперь метод должен вызывать MetricServiceClient
       service.recordMetric(metricData);
       
-      expect(mockConsole.log).toHaveBeenCalledWith(
-        'Metric recorded:',
-        expect.any(String)
-      );
+      expect(service['client'].createTimeSeries).toHaveBeenCalledWith({
+        name: 'projects/test-project',
+        timeSeries: expect.arrayContaining([
+          expect.objectContaining({
+            metric: expect.objectContaining({
+              type: 'custom.googleapis.com/amulet/http_requests_total',
+              labels: {
+                method: 'GET',
+                status: '200',
+              },
+            }),
+            resource: expect.objectContaining({
+              type: 'cloud_function',
+            }),
+            points: expect.arrayContaining([
+              expect.objectContaining({
+                value: expect.objectContaining({
+                  doubleValue: 1,
+                }),
+              }),
+            ]),
+          }),
+        ]),
+      });
     });
 
     it('должен отправлять метрику с timestamp', async () => {
@@ -97,10 +120,32 @@ describe('MonitoringService', () => {
 
       service.recordMetric(metricData);
       
-      expect(mockConsole.log).toHaveBeenCalledWith(
-        'Metric recorded:',
-        expect.any(String)
-      );
+      expect(service['client'].createTimeSeries).toHaveBeenCalledWith({
+        name: 'projects/test-project',
+        timeSeries: expect.arrayContaining([
+          expect.objectContaining({
+            metric: expect.objectContaining({
+              type: 'custom.googleapis.com/amulet/response_time',
+              labels: {
+                endpoint: '/api/users',
+              },
+            }),
+            points: expect.arrayContaining([
+              expect.objectContaining({
+                interval: expect.objectContaining({
+                  endTime: expect.objectContaining({
+                    seconds: 1704110400, // 2024-01-01T12:00:00Z в секундах
+                    nanos: 0,
+                  }),
+                }),
+                value: expect.objectContaining({
+                  doubleValue: 150,
+                }),
+              }),
+            ]),
+          }),
+        ]),
+      });
     });
 
     it('должен обрабатывать ошибки при отправке метрик', async () => {
@@ -108,18 +153,23 @@ describe('MonitoringService', () => {
       
       const service = new MonitoringService();
       
-      // Мокаем recordMetric чтобы он выбрасывал ошибку
-      const originalRecordMetric = service.recordMetric;
-      service.recordMetric = jest.fn().mockImplementation(() => {
-        throw new Error('Network error');
-      });
+      // Мокаем createTimeSeries чтобы он выбрасывал ошибку
+      const mockCreateTimeSeries = jest.fn().mockRejectedValue(new Error('Network error'));
+      service['client'].createTimeSeries = mockCreateTimeSeries;
 
       const metricData: MetricData = {
         name: 'test_metric',
         value: 1,
       };
 
-      expect(() => service.recordMetric(metricData)).toThrow('Network error');
+      // Метод должен обрабатывать ошибки gracefully
+      expect(() => service.recordMetric(metricData)).not.toThrow();
+      
+      // Ждем немного, чтобы асинхронная ошибка была обработана
+      await new Promise(resolve => setTimeout(resolve, 10));
+      
+      expect(mockCreateTimeSeries).toHaveBeenCalled();
+      expect(mockConsole.error).toHaveBeenCalledWith('Failed to record metric:', expect.any(Error));
     });
   });
 
@@ -146,10 +196,8 @@ describe('MonitoringService', () => {
 
       service.recordHttpStatus(mockReq.method, mockReq.path, mockRes.statusCode, duration);
       
-      expect(mockConsole.log).toHaveBeenCalledWith(
-        'Metric recorded:',
-        expect.any(String)
-      );
+      // Проверяем, что были вызваны методы для отправки метрик
+      expect(service['client'].createTimeSeries).toHaveBeenCalledTimes(2); // http_requests_total и http_request_duration
     });
 
     it('должен отправлять метрику ошибки', async () => {
@@ -165,10 +213,22 @@ describe('MonitoringService', () => {
 
       service.recordError('user_create', 'DatabaseError', context);
       
-      expect(mockConsole.log).toHaveBeenCalledWith(
-        'Metric recorded:',
-        expect.any(String)
-      );
+      expect(service['client'].createTimeSeries).toHaveBeenCalledWith({
+        name: 'projects/test-project',
+        timeSeries: expect.arrayContaining([
+          expect.objectContaining({
+            metric: expect.objectContaining({
+              type: 'custom.googleapis.com/amulet/errors_total',
+              labels: {
+                operation: 'user_create',
+                error_type: 'DatabaseError',
+                operation: 'user_create',
+                userId: 'user-123',
+              },
+            }),
+          }),
+        ]),
+      });
     });
   });
 
@@ -183,10 +243,27 @@ describe('MonitoringService', () => {
         source: 'web',
       });
       
-      expect(mockConsole.log).toHaveBeenCalledWith(
-        'Metric recorded:',
-        expect.any(String)
-      );
+      expect(service['client'].createTimeSeries).toHaveBeenCalledWith({
+        name: 'projects/test-project',
+        timeSeries: expect.arrayContaining([
+          expect.objectContaining({
+            metric: expect.objectContaining({
+              type: 'custom.googleapis.com/amulet/business_user_registration',
+              labels: {
+                plan: 'premium',
+                source: 'web',
+              },
+            }),
+            points: expect.arrayContaining([
+              expect.objectContaining({
+                value: expect.objectContaining({
+                  doubleValue: 1,
+                }),
+              }),
+            ]),
+          }),
+        ]),
+      });
     });
   });
 
@@ -196,18 +273,37 @@ describe('MonitoringService', () => {
       
       const service = new MonitoringService();
       
-      const sloConfig: SLOConfig = {
-        name: 'api-availability',
-        description: 'API availability SLO',
-        target: 0.999,
-        window: 30,
-        measurement: 'availability',
+      const config = {
+        name: 'slo-api-availability',
+        displayName: 'SLO Alert: api-availability',
+        description: 'Alert when availability drops below 99.9%',
+        metricType: 'custom.googleapis.com/amulet/http_requests_total',
+        threshold: 0.001, // 1 - 0.999
+        comparison: 'COMPARISON_GT' as const,
+        duration: 1800, // 30 минут в секундах
       };
 
-      // SLO алерты не реализованы в текущей версии
-      expect(sloConfig.name).toBe('api-availability');
-      expect(sloConfig.target).toBe(0.999);
-      expect(sloConfig.window).toBe(30);
+      await service.createAlertPolicy(config);
+      
+      expect(service['alertClient'].createAlertPolicy).toHaveBeenCalledWith({
+        name: 'projects/test-project',
+        alertPolicy: expect.objectContaining({
+          displayName: 'SLO Alert: api-availability',
+          documentation: {
+            content: 'Alert when availability drops below 99.9%',
+          },
+          conditions: expect.arrayContaining([
+            expect.objectContaining({
+              conditionThreshold: expect.objectContaining({
+                filter: 'metric.type="custom.googleapis.com/amulet/http_requests_total"',
+                comparison: 'COMPARISON_GT',
+                thresholdValue: 0.001,
+              }),
+            }),
+          ]),
+          enabled: { value: true },
+        }),
+      });
     });
 
     it('должен создавать алерт для латентности', async () => {
@@ -215,18 +311,37 @@ describe('MonitoringService', () => {
       
       const service = new MonitoringService();
       
-      const sloConfig: SLOConfig = {
-        name: 'api-latency',
-        description: 'API latency SLO',
-        target: 0.95,
-        window: 15,
-        measurement: 'latency',
+      const config = {
+        name: 'slo-api-latency',
+        displayName: 'SLO Alert: api-latency',
+        description: 'Alert when latency drops below 95%',
+        metricType: 'custom.googleapis.com/amulet/http_request_duration',
+        threshold: 0.05, // 1 - 0.95
+        comparison: 'COMPARISON_GT' as const,
+        duration: 900, // 15 минут в секундах
       };
 
-      // SLO алерты не реализованы в текущей версии
-      expect(sloConfig.name).toBe('api-latency');
-      expect(sloConfig.target).toBe(0.95);
-      expect(sloConfig.measurement).toBe('latency');
+      await service.createAlertPolicy(config);
+      
+      expect(service['alertClient'].createAlertPolicy).toHaveBeenCalledWith({
+        name: 'projects/test-project',
+        alertPolicy: expect.objectContaining({
+          displayName: 'SLO Alert: api-latency',
+          documentation: {
+            content: 'Alert when latency drops below 95%',
+          },
+          conditions: expect.arrayContaining([
+            expect.objectContaining({
+              conditionThreshold: expect.objectContaining({
+                filter: 'metric.type="custom.googleapis.com/amulet/http_request_duration"',
+                comparison: 'COMPARISON_GT',
+                thresholdValue: 0.05,
+              }),
+            }),
+          ]),
+          enabled: { value: true },
+        }),
+      });
     });
   });
 
@@ -344,10 +459,17 @@ describe('MonitoringService', () => {
 
       service.recordMetric(metricData);
       
-      expect(mockConsole.log).toHaveBeenCalledWith(
-        'Metric recorded:',
-        expect.any(String)
-      );
+      expect(service['client'].createTimeSeries).toHaveBeenCalledWith({
+        name: 'projects/test-project',
+        timeSeries: expect.arrayContaining([
+          expect.objectContaining({
+            metric: expect.objectContaining({
+              type: 'custom.googleapis.com/amulet/simple_counter',
+              labels: {},
+            }),
+          }),
+        ]),
+      });
     });
 
     it('должен обрабатывать метрики с пустыми labels', async () => {
@@ -363,10 +485,17 @@ describe('MonitoringService', () => {
 
       service.recordMetric(metricData);
       
-      expect(mockConsole.log).toHaveBeenCalledWith(
-        'Metric recorded:',
-        expect.any(String)
-      );
+      expect(service['client'].createTimeSeries).toHaveBeenCalledWith({
+        name: 'projects/test-project',
+        timeSeries: expect.arrayContaining([
+          expect.objectContaining({
+            metric: expect.objectContaining({
+              type: 'custom.googleapis.com/amulet/empty_labels',
+              labels: {},
+            }),
+          }),
+        ]),
+      });
     });
   });
 });
