@@ -29,59 +29,63 @@ describe('Telemetry Initialization', () => {
   });
 
   describe('Инициализация в продакшене', () => {
-    it('должен логировать отключение OpenTelemetry', () => {
+    it('должен инициализировать OpenTelemetry в продакшене', () => {
       // Импортируем модуль заново для выполнения кода
       jest.resetModules();
       
       process.env.NODE_ENV = 'production';
+      process.env.GOOGLE_CLOUD_PROJECT = 'amulet-test';
       delete process.env.FUNCTIONS_EMULATOR;
 
       // Импортируем telemetry модуль
       require('../../core/telemetry');
 
       expect(mockConsole.log).toHaveBeenCalledWith(
-        'OpenTelemetry disabled due to version conflicts'
+        '✅ OpenTelemetry initialized for project: amulet-test'
       );
     });
 
-    it('должен логировать отключение в эмуляторе', () => {
+    it('должен отключать OpenTelemetry в эмуляторе', () => {
       jest.resetModules();
       
       process.env.NODE_ENV = 'production';
+      process.env.GOOGLE_CLOUD_PROJECT = 'amulet-test';
       process.env.FUNCTIONS_EMULATOR = 'true';
 
       require('../../core/telemetry');
 
       expect(mockConsole.log).toHaveBeenCalledWith(
-        'OpenTelemetry disabled due to version conflicts'
+        'OpenTelemetry disabled - not in production mode or project ID not set'
       );
     });
   });
 
   describe('Инициализация в разработке', () => {
-    it('должен логировать отключение в development', () => {
+    it('должен отключать OpenTelemetry в development', () => {
       jest.resetModules();
       
       process.env.NODE_ENV = 'development';
+      process.env.GOOGLE_CLOUD_PROJECT = 'amulet-test';
       delete process.env.FUNCTIONS_EMULATOR;
 
       require('../../core/telemetry');
 
       expect(mockConsole.log).toHaveBeenCalledWith(
-        'OpenTelemetry disabled due to version conflicts'
+        'OpenTelemetry disabled - not in production mode or project ID not set'
       );
     });
 
-    it('должен логировать отключение без NODE_ENV', () => {
+    it('должен отключать OpenTelemetry без NODE_ENV', () => {
       jest.resetModules();
       
       delete process.env.NODE_ENV;
+      process.env.GOOGLE_CLOUD_PROJECT = 'amulet-test';
       delete process.env.FUNCTIONS_EMULATOR;
 
       require('../../core/telemetry');
 
       expect(mockConsole.log).toHaveBeenCalledWith(
-        'OpenTelemetry disabled due to version conflicts'
+        'OpenTelemetry disabled - not in production mode or project ID not set'
       );
     });
   });
@@ -91,12 +95,13 @@ describe('Telemetry Initialization', () => {
       jest.resetModules();
       
       process.env.NODE_ENV = 'production';
+      process.env.GOOGLE_CLOUD_PROJECT = 'amulet-test';
       process.env.FUNCTION_VERSION = '2.0.0';
 
       require('../../core/telemetry');
 
       expect(mockConsole.log).toHaveBeenCalledWith(
-        'OpenTelemetry disabled due to version conflicts'
+        '✅ OpenTelemetry initialized for project: amulet-test'
       );
     });
 
@@ -104,12 +109,30 @@ describe('Telemetry Initialization', () => {
       jest.resetModules();
       
       process.env.NODE_ENV = 'production';
+      process.env.GOOGLE_CLOUD_PROJECT = 'amulet-test';
       delete process.env.FUNCTION_VERSION;
 
       require('../../core/telemetry');
 
       expect(mockConsole.log).toHaveBeenCalledWith(
-        'OpenTelemetry disabled due to version conflicts'
+        '✅ OpenTelemetry initialized for project: amulet-test'
+      );
+    });
+
+    it('должен отключать OpenTelemetry без project ID', () => {
+      jest.resetModules();
+      
+      process.env.NODE_ENV = 'production';
+      delete process.env.GOOGLE_CLOUD_PROJECT;
+      delete process.env.GCP_PROJECT;
+
+      require('../../core/telemetry');
+
+      expect(mockConsole.log).toHaveBeenCalledWith(
+        'OpenTelemetry disabled - not in production mode or project ID not set'
+      );
+      expect(mockConsole.log).toHaveBeenCalledWith(
+        'Set GOOGLE_CLOUD_PROJECT environment variable to enable telemetry'
       );
     });
   });
@@ -142,9 +165,9 @@ describe('Telemetry Initialization', () => {
       const telemetryPath = path.join(__dirname, '../../core/telemetry.ts');
       const content = fs.readFileSync(telemetryPath, 'utf8');
       
-      expect(content).toContain('OpenTelemetry пакеты не установлены');
-      expect(content).toContain('npm install @opentelemetry/sdk-node');
-      expect(content).toContain('Временно отключено из-за проблем с совместимостью');
+      expect(content).toContain('OpenTelemetry для трейсинга и метрик');
+      expect(content).toContain('Cloud Trace');
+      expect(content).toContain('проблем с совместимостью версий');
     });
   });
 
