@@ -4,18 +4,18 @@
  * - логирование
  * - CORS и JSON
  * - ETag/кеширование GET
- * - простой rate-limit (in-memory)
- * - идемпотентность (in-memory TTL) для небезопасных методов
  * - единый формат ошибок
+ * 
+ * Rate limiting и идемпотентность вынесены в отдельные модули:
+ * - core/rateLimit.ts
+ * - core/idempotency.ts
  */
 
 import crypto from 'crypto';
 import express, { Request, Response, NextFunction } from 'express';
 import * as logger from 'firebase-functions/logger';
-import { db } from './firebase';
-import { FieldValue } from 'firebase-admin/firestore';
-
-// Redis client removed: using Firestore for distributed coordination
+import { rateLimitMiddleware } from './rateLimit';
+import { idempotencyMiddleware } from './idempotency';
 
 type ErrorCode =
   | 'unauthenticated'
@@ -144,144 +144,9 @@ export function etagMiddleware() {
   };
 }
 
-// Простой in-memory rate limiter per IP за окно 60 секунд
-interface Counter { count: number; resetAt: number }
-const rateStore: Map<string, Counter> = new Map();
+// Rate limiting теперь реализован в core/rateLimit.ts
 
-export function rateLimitMiddleware(limit = 60, windowSec = 60) {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const forwardedFor = (req.headers['x-forwarded-for'] as string) || '';
-      const clientIp = forwardedFor.split(',')[0]?.trim() || req.ip || 'unknown';
-      const key = (req as unknown as { auth?: { user?: { uid?: string } } }).auth?.user?.uid || clientIp;
-
-      const now = new Date();
-      const rateLimitRef = db.collection('rateLimits').doc(key);
-
-      const { remaining, resetSeconds } = await db.runTransaction(async (transaction) => {
-        const snap = await transaction.get(rateLimitRef);
-        const expiresAt = new Date(now.getTime() + windowSec * 1000);
-        if (!snap.exists) {
-          transaction.set(rateLimitRef, { count: 1, expiresAt });
-          return { remaining: limit - 1, resetSeconds: windowSec };
-        }
-        const data = snap.data() as { count?: number; expiresAt?: FirebaseFirestore.Timestamp } | undefined;
-        const existingExpiresDate = data?.expiresAt?.toDate();
-        if (!existingExpiresDate || existingExpiresDate < now) {
-          transaction.set(rateLimitRef, { count: 1, expiresAt });
-          return { remaining: limit - 1, resetSeconds: windowSec };
-        }
-        const countValue = data?.count;
-        const currentCount = typeof countValue === 'number' ? countValue : 0;
-        if (currentCount >= limit) {
-          const secondsLeft = Math.max(1, Math.ceil((existingExpiresDate.getTime() - now.getTime()) / 1000));
-          return { remaining: -1, resetSeconds: secondsLeft };
-        }
-        transaction.update(rateLimitRef, { count: FieldValue.increment(1) });
-        const secondsLeft = Math.max(1, Math.ceil((existingExpiresDate.getTime() - now.getTime()) / 1000));
-        return { remaining: limit - (currentCount + 1), resetSeconds: secondsLeft };
-      });
-
-      res.setHeader('X-RateLimit-Limit', String(limit));
-      res.setHeader('X-RateLimit-Remaining', String(Math.max(0, remaining)));
-      res.setHeader('Retry-After', String(resetSeconds));
-
-      if (remaining < 0) {
-        return sendError(res, { code: 'rate_limit_exceeded', message: 'Too many requests' });
-      }
-      next();
-    } catch (error) {
-      logger.error('Rate limit check failed', { error });
-      next();
-    }
-  };
-}
-
-// Идемпотентность для небезопасных методов с TTL (сек)
-interface IdemEntry { status: number; body: unknown; storedAt: number; ttlMs: number }
-const idemStore: Map<string, IdemEntry> = new Map();
-
-// Тестовые утилиты для сброса in-memory хранилищ
-export function __resetRateLimitStoreForTests(): void {
-  rateStore.clear();
-}
-
-export function __resetIdempotencyStoreForTests(): void {
-  idemStore.clear();
-}
-
-export function idempotencyMiddleware(ttlSec = 3600) {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    const method = req.method.toUpperCase();
-    if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) return next();
-
-    const keyHeader = (req.headers['idempotency-key'] as string) || '';
-    if (!keyHeader) return next();
-
-    // Ключ формируем из заголовка; тело может меняться, но ключ определяет идемпотентность
-    const keyHash = crypto.createHash('sha256').update(keyHeader).digest('hex');
-    const idempotencyRef = db.collection('idempotencyKeys').doc(keyHash);
-    const now = new Date();
-
-    try {
-      const result = await db.runTransaction(async (transaction) => {
-        const doc = await transaction.get(idempotencyRef);
-        if (doc.exists) {
-          const data = doc.data() as {
-            status?: string;
-            responseBody?: string;
-            responseStatus?: number;
-            expiresAt?: FirebaseFirestore.Timestamp;
-          };
-          const existingExpiresDate = data?.expiresAt?.toDate();
-          if (existingExpiresDate && existingExpiresDate < now) {
-            transaction.delete(idempotencyRef);
-            return 'proceed' as const;
-          }
-          if (data?.status === 'pending') {
-            return 'retry' as const;
-          }
-          if (data?.status === 'completed' && typeof data.responseStatus === 'number' && typeof data.responseBody === 'string') {
-            return { status: data.responseStatus, body: JSON.parse(data.responseBody) } as const;
-          }
-        }
-        transaction.set(idempotencyRef, {
-          status: 'pending',
-          createdAt: FieldValue.serverTimestamp(),
-          expiresAt: new Date(now.getTime() + ttlSec * 1000),
-        });
-        return 'proceed' as const;
-      });
-
-      if (result === 'retry') {
-        res.setHeader('Retry-After', '1');
-        return sendError(res, { code: 'failed_precondition', message: 'Request is being processed, retry later' });
-      }
-
-      if (typeof result === 'object') {
-        return res.status(result.status).json(result.body as Record<string, unknown>);
-      }
-
-      const originalJson = res.json.bind(res);
-      (res as Response & { json: (body: unknown) => Response }).json = (body: unknown) => {
-        const responseToSave = {
-          status: 'completed',
-          responseStatus: res.statusCode || 200,
-          responseBody: JSON.stringify(body),
-          completedAt: FieldValue.serverTimestamp(),
-        };
-        void idempotencyRef.set(responseToSave, { merge: true }).catch((err) => {
-          logger.error('Failed to save idempotency response', { key: keyHash, error: err });
-        });
-        return originalJson(body as Record<string, unknown>);
-      };
-      next();
-    } catch (error) {
-      logger.error('Idempotency check failed', { error });
-      next();
-    }
-  };
-}
+// Идемпотентность теперь реализована в core/idempotency.ts
 
 // Единый обработчик ошибок
 export function errorHandler() {
@@ -305,8 +170,16 @@ export function applyBaseMiddlewares(app: express.Express) {
   app.use(corsMiddleware());
   app.use(jsonMiddleware());
   app.use(etagMiddleware());
-  app.use(rateLimitMiddleware());
-  app.use(idempotencyMiddleware());
+  app.use(rateLimitMiddleware()); // Используем новый модуль
+  app.use(idempotencyMiddleware()); // Используем новый модуль
 }
+
+// Экспорт тестовых функций для обратной совместимости
+export { __resetRateLimitStoreForTests } from './rateLimit';
+export { __resetIdempotencyStoreForTests } from './idempotency';
+
+// Экспорт middleware для обратной совместимости
+export { rateLimitMiddleware } from './rateLimit';
+export { idempotencyMiddleware } from './idempotency';
 
 
