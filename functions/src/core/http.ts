@@ -13,9 +13,11 @@
 
 import crypto from 'crypto';
 import express, { Request, Response, NextFunction } from 'express';
-import * as logger from 'firebase-functions/logger';
 import { rateLimitMiddleware } from './rateLimit';
 import { idempotencyMiddleware } from './idempotency';
+import { log } from './structuredLogger';
+import { tracingMiddleware } from './tracing';
+import { metricsMiddleware } from './monitoring';
 
 type ErrorCode =
   | 'unauthenticated'
@@ -80,18 +82,19 @@ export function requestIdMiddleware() {
 export function loggingMiddleware() {
   return (req: Request, res: Response, next: NextFunction) => {
     const start = Date.now();
-    const requestId = (req.headers['x-request-id'] as string) || '';
-    logger.info('HTTP request', {
-      requestId,
-      method: req.method,
-      path: req.path,
+    (req as Request & { startTime: number }).startTime = start;
+    
+    // Используем структурированное логирование
+    log.request(req, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
     });
 
     res.on('finish', () => {
       const durationMs = Date.now() - start;
-      logger.info('HTTP response', { requestId, status: res.statusCode, durationMs });
+      log.response(req, res.statusCode, {
+        latency: durationMs,
+      });
     });
 
     next();
@@ -154,7 +157,20 @@ export function errorHandler() {
   return (err: unknown, req: Request, res: Response, _next: NextFunction) => {
     const requestId = req.headers['x-request-id'];
     const message = err instanceof Error ? err.message : String(err);
-    logger.error('Unhandled error', { requestId, error: message });
+    
+    // Логируем ошибку с полным контекстом
+    log.error('Unhandled error', {
+      requestId: requestId as string,
+      error: {
+        name: err instanceof Error ? err.name : 'UnknownError',
+        message: message,
+        stack: err instanceof Error ? err.stack : undefined,
+      },
+      route: `${req.method} ${req.path}`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
     if (err && typeof err === 'object' && 'code' in (err as Record<string, unknown>) && 'message' in (err as Record<string, unknown>)) {
       const apiErr = err as unknown as ApiError;
       return sendError(res, apiErr);
@@ -166,6 +182,8 @@ export function errorHandler() {
 // Конструктор стандартного набора middleware для API
 export function applyBaseMiddlewares(app: express.Express) {
   app.use(requestIdMiddleware());
+  app.use(tracingMiddleware()); // Трейсинг должен быть первым
+  app.use(metricsMiddleware()); // Метрики после трейсинга
   app.use(loggingMiddleware());
   app.use(corsMiddleware());
   app.use(jsonMiddleware());

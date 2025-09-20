@@ -6,6 +6,9 @@
  * - auth: функции аутентификации и авторизации
  */
 
+// Инициализируем телеметрию в самом начале
+import './core/telemetry';
+
 import {setGlobalOptions} from "firebase-functions";
 import * as logger from "firebase-functions/logger";
 

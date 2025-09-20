@@ -4,8 +4,8 @@ import { sendError } from '../core/http';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../core/firebase';
 import { z } from 'zod';
-import * as logger from 'firebase-functions/logger';
 import { getErrorMessage } from '../core/i18n';
+import { log } from '../core/structuredLogger';
 
 // Ленивый доступ к Firestore и коллекции users, чтобы переменные окружения из setup успевали примениться
 // getUsersCollection удалён: используем db.collection('users') напрямую
@@ -94,10 +94,10 @@ usersRouter.post('/users.me.init', validateBody('init'), async (req: Request, re
     const fresh = await docRef.get();
     return res.status(200).json({ user: fresh.data() });
   } catch (error) {
-    logger.error('Failed to initialize user profile', {
+    log.error('Failed to initialize user profile', {
       userId: uid,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      requestId: req.headers['x-request-id']
+      operation: 'user_init',
+      resource: 'user_profile',
     });
     return sendError(res, { 
       code: 'unavailable', 
@@ -120,10 +120,10 @@ usersRouter.get('/users.me', async (req: Request, res: Response) => {
     }
     return res.status(200).json({ user: doc.data() });
   } catch (error) {
-    logger.error('Failed to get user profile', {
+    log.error('Failed to get user profile', {
       userId: uid,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      requestId: req.headers['x-request-id']
+      operation: 'user_get',
+      resource: 'user_profile',
     });
     return sendError(res, { 
       code: 'unavailable', 
@@ -151,10 +151,10 @@ usersRouter.patch('/users.me', validateBody('update'), async (req: Request, res:
     const fresh = await docRef.get();
     return res.status(200).json({ user: fresh.data() });
   } catch (error) {
-    logger.error('Failed to update user profile', {
+    log.error('Failed to update user profile', {
       userId: uid,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      requestId: req.headers['x-request-id']
+      operation: 'user_update',
+      resource: 'user_profile',
     });
     return sendError(res, { 
       code: 'unavailable', 
@@ -223,10 +223,9 @@ usersRouter.post('/users.me/delete', async (req: Request, res: Response) => {
       deletionJobId: jobId
     });
 
-    logger.info('User deletion job created', { 
+    log.business('user_deletion_requested', 'user_profile', 'User deletion job created', { 
       jobId, 
       userId: uid,
-      requestId: req.headers['x-request-id']
     });
 
     return res.status(202).json({ 
@@ -235,10 +234,10 @@ usersRouter.post('/users.me/delete', async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    logger.error('Failed to create user deletion job', {
+    log.error('Failed to create user deletion job', {
       userId: uid,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      requestId: req.headers['x-request-id']
+      operation: 'user_deletion_request',
+      resource: 'user_profile',
     });
 
     return sendError(res, { 
