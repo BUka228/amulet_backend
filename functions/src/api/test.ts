@@ -18,6 +18,7 @@ import { adminRouter } from './admin';
 import { rulesRouter } from './rules';
 import { webhooksRouter } from './webhooks';
 import { notificationsRouter } from './notifications';
+import { otaRouter } from './ota';
 // no-op
 
 const app = express();
@@ -74,6 +75,7 @@ app.use('/v1', adminRouter);
 app.use('/v1', rulesRouter);
 app.use('/v1', webhooksRouter);
 app.use('/v1', notificationsRouter);
+app.use('/v1', otaRouter);
 
 // Защищенный endpoint (требует аутентификации)
 app.get('/protected', authenticateToken(), (req: Request, res: Response) => {

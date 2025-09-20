@@ -309,51 +309,127 @@ async function seedPatterns() {
 async function seedFirmware() {
   console.log('🌱 Засеивание прошивок...');
   
-  const firmwareV1 = {
-    version: '1.0.0',
-    hardwareVersion: 100,
-    downloadUrl: 'https://storage.googleapis.com/amulet-firmware/v1.0.0/firmware.bin',
-    checksum: 'abc123def4567890',
-    size: 1024000,
-    releaseNotes: 'Первая версия прошивки с базовым функционалом',
-    locales: {
-      'ru': {
-        releaseNotes: 'Первая версия прошивки с базовым функционалом'
-      },
-      'en': {
-        releaseNotes: 'First firmware version with basic functionality'
-      }
-    },
-    isActive: true,
-    rolloutPercentage: 100,
-    publishedAt: Timestamp.now(),
-    publishedBy: 'system'
-  };
-
-  const firmwareV2 = {
-    version: '2.0.0',
-    hardwareVersion: 200,
-    downloadUrl: 'https://storage.googleapis.com/amulet-firmware/v2.0.0/firmware.bin',
-    checksum: 'fedcba0987654321',
-    size: 2048000,
-    releaseNotes: 'Вторая версия прошивки с улучшениями для v2.0',
-    locales: {
-      'ru': {
-        releaseNotes: 'Вторая версия прошивки с улучшениями для v2.0'
-      },
-      'en': {
-        releaseNotes: 'Second firmware with improvements for v2.0'
-      }
-    },
-    isActive: true,
-    rolloutPercentage: 100,
-    publishedAt: Timestamp.now(),
-    publishedBy: 'system'
-  };
-
   const now = Timestamp.now();
+  const yesterday = new Date(now.toDate());
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayTs = Timestamp.fromDate(yesterday);
+  
+  const firmwareData = [
+    // v1.0 прошивки
+    {
+      version: '1.0.0',
+      hardwareVersion: 100,
+      downloadUrl: 'https://storage.googleapis.com/amulet-firmware/v1.0.0/firmware.bin',
+      checksum: 'abc123def4567890abcdef1234567890abcdef12',
+      size: 1024000,
+      releaseNotes: 'Первая версия прошивки с базовым функционалом',
+      locales: {
+        'ru': {
+          releaseNotes: 'Первая версия прошивки с базовым функционалом'
+        },
+        'en': {
+          releaseNotes: 'First firmware version with basic functionality'
+        }
+      },
+      isActive: true,
+      minFirmwareVersion: '0.0.0',
+      maxFirmwareVersion: '1.0.0',
+      rolloutPercentage: 100,
+      publishedAt: yesterdayTs,
+      publishedBy: 'system'
+    },
+    {
+      version: '1.1.0',
+      hardwareVersion: 100,
+      downloadUrl: 'https://storage.googleapis.com/amulet-firmware/v1.1.0/firmware.bin',
+      checksum: 'def4567890123456def4567890123456def45678',
+      size: 1124000,
+      releaseNotes: 'Обновление с исправлениями ошибок и улучшениями стабильности',
+      locales: {
+        'ru': {
+          releaseNotes: 'Обновление с исправлениями ошибок и улучшениями стабильности'
+        },
+        'en': {
+          releaseNotes: 'Update with bug fixes and stability improvements'
+        }
+      },
+      isActive: true,
+      minFirmwareVersion: '1.0.0',
+      maxFirmwareVersion: '1.1.0',
+      rolloutPercentage: 100,
+      publishedAt: now,
+      publishedBy: 'system'
+    },
+    // v2.0 прошивки
+    {
+      version: '2.0.0',
+      hardwareVersion: 200,
+      downloadUrl: 'https://storage.googleapis.com/amulet-firmware/v2.0.0/firmware.bin',
+      checksum: 'fedcba0987654321fedcba0987654321fedcba09',
+      size: 2048000,
+      releaseNotes: 'Вторая версия прошивки с поддержкой кольца светодиодов',
+      locales: {
+        'ru': {
+          releaseNotes: 'Вторая версия прошивки с поддержкой кольца светодиодов'
+        },
+        'en': {
+          releaseNotes: 'Second firmware with LED ring support'
+        }
+      },
+      isActive: true,
+      minFirmwareVersion: '0.0.0',
+      maxFirmwareVersion: '2.0.0',
+      rolloutPercentage: 100,
+      publishedAt: yesterdayTs,
+      publishedBy: 'system'
+    },
+    {
+      version: '2.1.0',
+      hardwareVersion: 200,
+      downloadUrl: 'https://storage.googleapis.com/amulet-firmware/v2.1.0/firmware.bin',
+      checksum: '1234567890abcdef1234567890abcdef12345678',
+      size: 2148000,
+      releaseNotes: 'Новые анимации и улучшенная производительность',
+      locales: {
+        'ru': {
+          releaseNotes: 'Новые анимации и улучшенная производительность'
+        },
+        'en': {
+          releaseNotes: 'New animations and improved performance'
+        }
+      },
+      isActive: true,
+      minFirmwareVersion: '2.0.0',
+      maxFirmwareVersion: '2.1.0',
+      rolloutPercentage: 50, // Постепенное развёртывание
+      publishedAt: now,
+      publishedBy: 'system'
+    },
+    {
+      version: '2.2.0',
+      hardwareVersion: 200,
+      downloadUrl: 'https://storage.googleapis.com/amulet-firmware/v2.2.0/firmware.bin',
+      checksum: '9876543210fedcba9876543210fedcba98765432',
+      size: 2248000,
+      releaseNotes: 'Экспериментальная версия с новыми функциями (только для тестирования)',
+      locales: {
+        'ru': {
+          releaseNotes: 'Экспериментальная версия с новыми функциями (только для тестирования)'
+        },
+        'en': {
+          releaseNotes: 'Experimental version with new features (testing only)'
+        }
+      },
+      isActive: true,
+      minFirmwareVersion: '2.1.0',
+      maxFirmwareVersion: '2.2.0',
+      rolloutPercentage: 10, // Очень ограниченное развёртывание
+      publishedAt: now,
+      publishedBy: 'system'
+    }
+  ];
 
-  for (const fw of [firmwareV1, firmwareV2]) {
+  for (const fw of firmwareData) {
     const docRef = db.collection('firmware').doc();
     await docRef.set({
       ...fw,
@@ -361,7 +437,7 @@ async function seedFirmware() {
       createdAt: now,
       updatedAt: now
     });
-    console.log(`✅ Прошивка создана: v${fw.version}`);
+    console.log(`✅ Прошивка создана: ${fw.version} (HW v${fw.hardwareVersion}, rollout: ${fw.rolloutPercentage}%)`);
   }
 }
 

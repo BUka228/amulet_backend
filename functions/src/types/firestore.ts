@@ -230,6 +230,18 @@ export interface Firmware extends BaseDocument {
   publishedBy: string; // admin userId
 }
 
+// Firmware Report Collection (OTA отчёты)
+export interface FirmwareReport extends BaseDocument {
+  deviceId: string;
+  ownerId: string;
+  fromVersion: string;
+  toVersion: string;
+  status: 'success' | 'failed' | 'cancelled';
+  errorCode?: string;
+  errorMessage?: string;
+  reportedAt: Timestamp;
+}
+
 // Invite Collection (приглашения в пары)
 export interface Invite extends BaseDocument {
   fromUserId: string;
