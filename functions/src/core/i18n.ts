@@ -91,6 +91,12 @@ const MESSAGES: Record<SupportedLanguage, Record<string, string>> = {
     // Push notifications
     'push.hug.received.title': 'You received a hug',
     'push.hug.received.body': 'Open the app to feel it',
+    'push.pair.invite.title': 'New connection request',
+    'push.pair.invite.body': 'Someone wants to connect with you',
+    'push.practice.reminder.title': 'Time for your practice',
+    'push.practice.reminder.body': 'Take a moment to breathe and center yourself',
+    'push.ota.available.title': 'Firmware update available',
+    'push.ota.available.body': 'Your Amulet has a new update ready',
   },
   
   ru: {
@@ -171,6 +177,12 @@ const MESSAGES: Record<SupportedLanguage, Record<string, string>> = {
     // Push notifications
     'push.hug.received.title': 'Вы получили объятие',
     'push.hug.received.body': 'Откройте приложение, чтобы почувствовать его',
+    'push.pair.invite.title': 'Новый запрос на связь',
+    'push.pair.invite.body': 'Кто-то хочет подключиться к вам',
+    'push.practice.reminder.title': 'Время для практики',
+    'push.practice.reminder.body': 'Найдите момент, чтобы подышать и сосредоточиться',
+    'push.ota.available.title': 'Доступно обновление прошивки',
+    'push.ota.available.body': 'Ваш Амулет готов к обновлению',
   },
   
   // Заглушки для других языков (можно расширить)

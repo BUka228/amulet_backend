@@ -3,11 +3,8 @@ import { authenticateToken } from '../core/auth';
 import { sendError } from '../core/http';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../core/firebase';
-import { getMessaging } from 'firebase-admin/messaging';
-import { getMessage } from '../core/i18n';
 import { z } from 'zod';
 import * as logger from 'firebase-functions/logger';
-import { logTokenDeletion, TokenAuditContext } from '../core/auditLogger';
 
 // Валидация входа для /hugs.send
 const hugSendSchema = z
@@ -133,100 +130,20 @@ hugsRouter.post('/hugs.send', validateBody('send'), async (req: Request, res: Re
     // Отправляем FCM пуш всем активным токенам получателя
     let delivered = false;
     try {
-      const tokensSnap = await db
-        .collection('notificationTokens')
-        .where('userId', '==', resolvedToUserId)
-        .where('isActive', '==', true)
-        .get();
-      const tokens = tokensSnap.docs
-        .map((d) => (d.data() as { token?: string }).token)
-        .filter(Boolean)
-        .sort() as string[];
-      if (tokens.length > 0) {
-        const response = await getMessaging().sendEachForMulticast({
-          tokens,
-          notification: {
-            title: getMessage(req, 'push.hug.received.title'),
-            body: getMessage(req, 'push.hug.received.body'),
-          },
-          data: {
-            type: 'hug.received',
-            hugId: hugDocRef.id,
-            fromUserId,
-            color: emotion.color,
-            patternId: emotion.patternId,
-          },
-        });
-        delivered = response.successCount > 0;
-
-        // Очистка невалидных FCM-токенов
-        if (Array.isArray(response.responses) && response.responses.length === tokens.length) {
-          const deadTokens: string[] = [];
-          response.responses.forEach((r, idx) => {
-            const tokenAtIndex = tokens[idx];
-            if (
-              !r.success &&
-              r.error &&
-              (r.error as { code?: string }).code === 'messaging/registration-token-not-registered' &&
-              tokenAtIndex
-            ) {
-              deadTokens.push(tokenAtIndex);
-            }
-          });
-          if (deadTokens.length > 0) {
-            // Удаляем невалидные токены из подколлекции и обновляем денормализованный массив
-            await Promise.all(
-              deadTokens.map(async (t) => {
-                try {
-                  const q = await db.collection('notificationTokens').where('token', '==', t).limit(50).get();
-                  await Promise.all(q.docs.map((d) => d.ref.delete()));
-                  
-                  // Обновляем денормализованный массив pushTokens в документе пользователя
-                  const userRef = db.collection('users').doc(resolvedToUserId);
-                  await userRef.update({
-                    pushTokens: FieldValue.arrayRemove(t)
-                  });
-                  
-                  // Логируем удаление невалидного токена
-                  const auditContext: TokenAuditContext = {
-                    userId: resolvedToUserId,
-                    tokenId: `fcm-cleanup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                    token: t,
-                    reason: 'fcm_invalid_token',
-                    userAgent: req.headers['user-agent'] as string,
-                    ipAddress: req.ip || req.connection.remoteAddress,
-                    requestId: req.headers['x-request-id'] as string,
-                    source: 'api'
-                  };
-                  
-                  // Получаем предыдущее состояние токена для аудита
-                  const previousState = {
-                    isActive: true,
-                    lastUsedAt: { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 }
-                  };
-                  
-                  await logTokenDeletion(auditContext, previousState);
-                  
-                  logger.info('Removed invalid FCM token', { 
-                    token: t, 
-                    userId: resolvedToUserId, 
-                    hugId: hugDocRef.id,
-                    updatedPushTokens: true
-                  });
-                } catch (cleanupErr) {
-                  logger.error('Failed to cleanup invalid FCM token', {
-                    token: t,
-                    userId: resolvedToUserId,
-                    hugId: hugDocRef.id,
-                    error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
-                    requestId: req.headers['x-request-id'],
-                  });
-                }
-              })
-            );
-          }
-        }
-      }
+      const { sendNotification } = await import('../core/pushNotifications');
+      const result = await sendNotification(
+        resolvedToUserId,
+        'hug.received',
+        {
+          type: 'hug.received',
+          hugId: hugDocRef.id,
+          fromUserId,
+          color: emotion.color,
+          patternId: emotion.patternId,
+        },
+        req.headers['accept-language'] as string
+      );
+      delivered = result.delivered;
     } catch (err) {
       logger.error('Failed to send FCM for hug', {
         hugId: hugDocRef.id,

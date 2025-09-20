@@ -17,6 +17,8 @@ import { api } from './api/test';
 import { processUserDeletion } from './background/deleteUser';
 import { processOutbox } from './background/outboxWorker';
 import { scheduledCleanup } from './background/scheduledCleanup';
+import { practiceRemindersHandler, scheduledPracticeRemindersHandler } from './background/practiceReminders';
+import { otaNotificationsHandler } from './background/otaNotifications';
 
 // For cost control, you can set the maximum number of containers that can be
 // running at the same time. This helps mitigate the impact of unexpected
@@ -37,5 +39,7 @@ export { api };
 export { processUserDeletion };
 export { processOutbox };
 export { scheduledCleanup };
+export { practiceRemindersHandler, scheduledPracticeRemindersHandler };
+export { otaNotificationsHandler };
 
 logger.info('Amulet Backend functions loaded', {structuredData: true});

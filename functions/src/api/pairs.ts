@@ -69,6 +69,42 @@ pairsRouter.post('/pairs.invite', validateBody('invite'), async (req: Request, r
 
     await inviteRef.set(inviteDoc);
 
+    // Отправляем уведомление получателю приглашения (если указан email)
+    if (method === 'email' && target) {
+      try {
+        const { sendNotification } = await import('../core/pushNotifications');
+        // Находим пользователя по email и отправляем уведомление
+        const userQuery = await db.collection('users')
+          .where('email', '==', target)
+          .limit(1)
+          .get();
+        
+        if (!userQuery.empty) {
+          const userDoc = userQuery.docs[0];
+          const userId = userDoc.id;
+          
+          await sendNotification(
+            userId,
+            'pair.invite',
+            {
+              type: 'pair.invite',
+              inviteId: inviteRef.id,
+              fromUserId,
+            },
+            req.headers['accept-language'] as string
+          );
+        }
+      } catch (notificationError) {
+        logger.error('Failed to send pair invite notification', {
+          inviteId: inviteRef.id,
+          fromUserId,
+          target,
+          error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+        });
+        // Не прерываем выполнение, если уведомление не отправилось
+      }
+    }
+
     // Генерируем URL приглашения (заглушка, реальный базовый URL должен быть из конфигурации)
     const baseUrl = process.env.PAIR_INVITE_BASE_URL || 'https://amulet.app/invite';
     const url = `${baseUrl}/${inviteRef.id}`;
