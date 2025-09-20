@@ -77,6 +77,78 @@
         "value": "100"
       },
       "description": "Размер батча для очистки токенов (количество пользователей за раз)"
+    },
+    "rate_limit_mobile_limit": {
+      "defaultValue": {
+        "value": "60"
+      },
+      "description": "Лимит запросов для мобильных клиентов (запросов в минуту)"
+    },
+    "rate_limit_mobile_window_sec": {
+      "defaultValue": {
+        "value": "60"
+      },
+      "description": "Окно времени для лимита мобильных клиентов в секундах"
+    },
+    "rate_limit_admin_limit": {
+      "defaultValue": {
+        "value": "300"
+      },
+      "description": "Лимит запросов для админских операций (запросов в минуту)"
+    },
+    "rate_limit_admin_window_sec": {
+      "defaultValue": {
+        "value": "60"
+      },
+      "description": "Окно времени для лимита админских операций в секундах"
+    },
+    "rate_limit_hugs_limit": {
+      "defaultValue": {
+        "value": "10"
+      },
+      "description": "Лимит запросов для отправки объятий (запросов в минуту)"
+    },
+    "rate_limit_hugs_window_sec": {
+      "defaultValue": {
+        "value": "60"
+      },
+      "description": "Окно времени для лимита объятий в секундах"
+    },
+    "rate_limit_webhooks_limit": {
+      "defaultValue": {
+        "value": "100"
+      },
+      "description": "Лимит запросов для webhooks (запросов в минуту)"
+    },
+    "rate_limit_webhooks_window_sec": {
+      "defaultValue": {
+        "value": "60"
+      },
+      "description": "Окно времени для лимита webhooks в секундах"
+    },
+    "rate_limit_public_limit": {
+      "defaultValue": {
+        "value": "30"
+      },
+      "description": "Лимит запросов для публичных API (запросов в минуту)"
+    },
+    "rate_limit_public_window_sec": {
+      "defaultValue": {
+        "value": "60"
+      },
+      "description": "Окно времени для лимита публичных API в секундах"
+    },
+    "rate_limit_default_limit": {
+      "defaultValue": {
+        "value": "60"
+      },
+      "description": "Лимит запросов по умолчанию (запросов в минуту)"
+    },
+    "rate_limit_default_window_sec": {
+      "defaultValue": {
+        "value": "60"
+      },
+      "description": "Окно времени для лимита по умолчанию в секундах"
     }
   },
   "parameterGroups": {
@@ -111,6 +183,23 @@
       "parameters": {
         "token_retention_days": {},
         "cleanup_batch_size": {}
+      }
+    },
+    "rate_limiting": {
+      "description": "Настройки ограничения частоты запросов",
+      "parameters": {
+        "rate_limit_mobile_limit": {},
+        "rate_limit_mobile_window_sec": {},
+        "rate_limit_admin_limit": {},
+        "rate_limit_admin_window_sec": {},
+        "rate_limit_hugs_limit": {},
+        "rate_limit_hugs_window_sec": {},
+        "rate_limit_webhooks_limit": {},
+        "rate_limit_webhooks_window_sec": {},
+        "rate_limit_public_limit": {},
+        "rate_limit_public_window_sec": {},
+        "rate_limit_default_limit": {},
+        "rate_limit_default_window_sec": {}
       }
     }
   },

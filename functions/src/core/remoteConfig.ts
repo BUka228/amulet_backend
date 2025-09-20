@@ -28,6 +28,19 @@ const DEFAULT_VALUES = {
   outbox_retry_backoff_base_ms: 1000,
   token_retention_days: 90,
   cleanup_batch_size: 100,
+  // Rate limiting параметры
+  rate_limit_mobile_limit: 60,
+  rate_limit_mobile_window_sec: 60,
+  rate_limit_admin_limit: 300,
+  rate_limit_admin_window_sec: 60,
+  rate_limit_hugs_limit: 10,
+  rate_limit_hugs_window_sec: 60,
+  rate_limit_webhooks_limit: 100,
+  rate_limit_webhooks_window_sec: 60,
+  rate_limit_public_limit: 30,
+  rate_limit_public_window_sec: 60,
+  rate_limit_default_limit: 60,
+  rate_limit_default_window_sec: 60,
 } as const;
 
 type ConfigKey = keyof typeof DEFAULT_VALUES;
@@ -194,4 +207,70 @@ export function clearConfigCache(): void {
  */
 export function setConfigValue(key: ConfigKey, value: unknown): void {
   configCache[key] = value;
+}
+
+/**
+ * Получает конфигурацию rate limit для мобильных клиентов
+ */
+export async function getMobileRateLimitConfig(): Promise<{ limit: number; windowSec: number }> {
+  const [limit, windowSec] = await Promise.all([
+    getConfigValue<number>('rate_limit_mobile_limit'),
+    getConfigValue<number>('rate_limit_mobile_window_sec')
+  ]);
+  return { limit, windowSec };
+}
+
+/**
+ * Получает конфигурацию rate limit для админских запросов
+ */
+export async function getAdminRateLimitConfig(): Promise<{ limit: number; windowSec: number }> {
+  const [limit, windowSec] = await Promise.all([
+    getConfigValue<number>('rate_limit_admin_limit'),
+    getConfigValue<number>('rate_limit_admin_window_sec')
+  ]);
+  return { limit, windowSec };
+}
+
+/**
+ * Получает конфигурацию rate limit для hugs API
+ */
+export async function getHugsRateLimitConfig(): Promise<{ limit: number; windowSec: number }> {
+  const [limit, windowSec] = await Promise.all([
+    getConfigValue<number>('rate_limit_hugs_limit'),
+    getConfigValue<number>('rate_limit_hugs_window_sec')
+  ]);
+  return { limit, windowSec };
+}
+
+/**
+ * Получает конфигурацию rate limit для webhooks
+ */
+export async function getWebhooksRateLimitConfig(): Promise<{ limit: number; windowSec: number }> {
+  const [limit, windowSec] = await Promise.all([
+    getConfigValue<number>('rate_limit_webhooks_limit'),
+    getConfigValue<number>('rate_limit_webhooks_window_sec')
+  ]);
+  return { limit, windowSec };
+}
+
+/**
+ * Получает конфигурацию rate limit для публичных API
+ */
+export async function getPublicRateLimitConfig(): Promise<{ limit: number; windowSec: number }> {
+  const [limit, windowSec] = await Promise.all([
+    getConfigValue<number>('rate_limit_public_limit'),
+    getConfigValue<number>('rate_limit_public_window_sec')
+  ]);
+  return { limit, windowSec };
+}
+
+/**
+ * Получает конфигурацию rate limit по умолчанию
+ */
+export async function getDefaultRateLimitConfig(): Promise<{ limit: number; windowSec: number }> {
+  const [limit, windowSec] = await Promise.all([
+    getConfigValue<number>('rate_limit_default_limit'),
+    getConfigValue<number>('rate_limit_default_window_sec')
+  ]);
+  return { limit, windowSec };
 }

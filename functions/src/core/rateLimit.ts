@@ -15,6 +15,14 @@ import * as logger from 'firebase-functions/logger';
 import { db } from './firebase';
 import { FieldValue } from 'firebase-admin/firestore';
 import { sendError } from './http';
+import { 
+  getDefaultRateLimitConfig,
+  getMobileRateLimitConfig,
+  getAdminRateLimitConfig,
+  getHugsRateLimitConfig,
+  getWebhooksRateLimitConfig,
+  getPublicRateLimitConfig
+} from './remoteConfig';
 
 export interface RateLimitOptions {
   /** Максимальное количество запросов в окне */
@@ -65,10 +73,19 @@ const DEFAULT_OPTIONS: Required<RateLimitOptions> = {
  * Middleware для ограничения частоты запросов
  */
 export function rateLimitMiddleware(options: RateLimitOptions = {}) {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
-  
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
+      // Получаем конфигурацию из Remote Config
+      const remoteConfig = await getDefaultRateLimitConfig();
+      
+      // Объединяем с переданными опциями (переданные опции имеют приоритет)
+      const opts = { 
+        ...DEFAULT_OPTIONS, 
+        limit: remoteConfig.limit,
+        windowSec: remoteConfig.windowSec,
+        ...options 
+      };
+      
       const key = opts.keyExtractor(req);
       const result = await checkRateLimit(key, opts);
       
@@ -204,63 +221,108 @@ async function checkRateLimit(
  */
 
 /**
- * Лимит для мобильных приложений (60 req/min)
+ * Лимит для мобильных приложений (конфигурируется через Remote Config)
  */
 export function mobileRateLimit() {
-  return rateLimitMiddleware({
-    limit: 60,
-    windowSec: 60,
-    strategy: 'user',
-    keyPrefix: 'mobile'
-  });
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const config = await getMobileRateLimitConfig();
+      const middleware = rateLimitMiddleware({
+        limit: config.limit,
+        windowSec: config.windowSec,
+        strategy: 'user',
+        keyPrefix: 'mobile'
+      });
+      return middleware(req, res, next);
+    } catch (error) {
+      logger.error('Mobile rate limit config error', { error });
+      next();
+    }
+  };
 }
 
 /**
- * Лимит для админки (600 req/min)
+ * Лимит для админки (конфигурируется через Remote Config)
  */
 export function adminRateLimit() {
-  return rateLimitMiddleware({
-    limit: 600,
-    windowSec: 60,
-    strategy: 'user',
-    keyPrefix: 'admin'
-  });
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const config = await getAdminRateLimitConfig();
+      const middleware = rateLimitMiddleware({
+        limit: config.limit,
+        windowSec: config.windowSec,
+        strategy: 'user',
+        keyPrefix: 'admin'
+      });
+      return middleware(req, res, next);
+    } catch (error) {
+      logger.error('Admin rate limit config error', { error });
+      next();
+    }
+  };
 }
 
 /**
- * Строгий лимит для отправки "объятий" (10 req/min)
+ * Строгий лимит для отправки "объятий" (конфигурируется через Remote Config)
  */
 export function hugsRateLimit() {
-  return rateLimitMiddleware({
-    limit: 10,
-    windowSec: 60,
-    strategy: 'user',
-    keyPrefix: 'hugs'
-  });
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const config = await getHugsRateLimitConfig();
+      const middleware = rateLimitMiddleware({
+        limit: config.limit,
+        windowSec: config.windowSec,
+        strategy: 'user',
+        keyPrefix: 'hugs'
+      });
+      return middleware(req, res, next);
+    } catch (error) {
+      logger.error('Hugs rate limit config error', { error });
+      next();
+    }
+  };
 }
 
 /**
- * Лимит для вебхуков (100 req/min)
+ * Лимит для вебхуков (конфигурируется через Remote Config)
  */
 export function webhooksRateLimit() {
-  return rateLimitMiddleware({
-    limit: 100,
-    windowSec: 60,
-    strategy: 'ip',
-    keyPrefix: 'webhooks'
-  });
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const config = await getWebhooksRateLimitConfig();
+      const middleware = rateLimitMiddleware({
+        limit: config.limit,
+        windowSec: config.windowSec,
+        strategy: 'ip',
+        keyPrefix: 'webhooks'
+      });
+      return middleware(req, res, next);
+    } catch (error) {
+      logger.error('Webhooks rate limit config error', { error });
+      next();
+    }
+  };
 }
 
 /**
- * Лимит для публичных эндпоинтов (30 req/min)
+ * Лимит для публичных эндпоинтов (конфигурируется через Remote Config)
  */
 export function publicRateLimit() {
-  return rateLimitMiddleware({
-    limit: 30,
-    windowSec: 60,
-    strategy: 'ip',
-    keyPrefix: 'public'
-  });
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const config = await getPublicRateLimitConfig();
+      const middleware = rateLimitMiddleware({
+        limit: config.limit,
+        windowSec: config.windowSec,
+        strategy: 'ip',
+        keyPrefix: 'public'
+      });
+      return middleware(req, res, next);
+    } catch (error) {
+      logger.error('Public rate limit config error', { error });
+      next();
+    }
+  };
 }
 
 /**

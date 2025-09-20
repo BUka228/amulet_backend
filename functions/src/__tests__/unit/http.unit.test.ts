@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import request from 'supertest';
+import { beforeEach } from '@jest/globals';
 import {
   applyBaseMiddlewares,
   corsMiddleware,
@@ -11,7 +12,21 @@ import {
   __resetIdempotencyStoreForTests,
 } from '../../core/http';
 
+// Мокируем Remote Config
+jest.mock('../../core/remoteConfig', () => ({
+  getDefaultRateLimitConfig: jest.fn(),
+}));
+
 describe('core/http base middleware', () => {
+  beforeEach(async () => {
+    // Настройка моков Remote Config
+    const remoteConfigModule = await import('../../core/remoteConfig');
+    (remoteConfigModule as any).getDefaultRateLimitConfig.mockResolvedValue({ 
+      limit: 60, 
+      windowSec: 60 
+    });
+  });
+
   function createApp(config?: { rateLimit?: { limit: number; windowSec: number } }) {
     const app = express();
     // базовые
@@ -20,7 +35,10 @@ describe('core/http base middleware', () => {
     // для управляемого rate-limit теста можно переопределить
     if (config?.rateLimit) {
       // добавляем кастомный rate-limiter поверх (порядок имеет значение)
-      app.use(rateLimitMiddleware(config.rateLimit.limit, config.rateLimit.windowSec));
+      app.use(rateLimitMiddleware({ 
+        limit: config.rateLimit.limit, 
+        windowSec: config.rateLimit.windowSec 
+      }));
     }
 
     // простые эндпоинты

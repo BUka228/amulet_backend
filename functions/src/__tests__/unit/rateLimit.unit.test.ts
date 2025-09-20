@@ -15,6 +15,16 @@ import {
   __resetRateLimitStoreForTests
 } from '../../core/rateLimit';
 
+// Мокируем Remote Config
+jest.mock('../../core/remoteConfig', () => ({
+  getDefaultRateLimitConfig: jest.fn(),
+  getMobileRateLimitConfig: jest.fn(),
+  getAdminRateLimitConfig: jest.fn(),
+  getHugsRateLimitConfig: jest.fn(),
+  getWebhooksRateLimitConfig: jest.fn(),
+  getPublicRateLimitConfig: jest.fn(),
+}));
+
 jest.mock('../../core/firebase', () => {
   const mockCollection = jest.fn();
   const mockDoc = jest.fn();
@@ -65,13 +75,24 @@ describe('Rate Limit Middleware Unit Tests', () => {
   let mockResponse: Partial<Response>;
   let mockNext: NextFunction;
   let mocks: any;
+  let remoteConfigMocks: any;
 
   beforeEach(async () => {
-    // Получаем моки из модуля
+    // Получаем моки из модулей
     const firebaseModule = await import('../../core/firebase');
+    const remoteConfigModule = await import('../../core/remoteConfig');
     mocks = (firebaseModule as any).__mocks;
+    remoteConfigMocks = remoteConfigModule as any;
     
     jest.clearAllMocks();
+    
+    // Настройка моков Remote Config
+    remoteConfigMocks.getDefaultRateLimitConfig.mockResolvedValue({ limit: 60, windowSec: 60 });
+    remoteConfigMocks.getMobileRateLimitConfig.mockResolvedValue({ limit: 60, windowSec: 60 });
+    remoteConfigMocks.getAdminRateLimitConfig.mockResolvedValue({ limit: 300, windowSec: 60 });
+    remoteConfigMocks.getHugsRateLimitConfig.mockResolvedValue({ limit: 10, windowSec: 60 });
+    remoteConfigMocks.getWebhooksRateLimitConfig.mockResolvedValue({ limit: 100, windowSec: 60 });
+    remoteConfigMocks.getPublicRateLimitConfig.mockResolvedValue({ limit: 30, windowSec: 60 });
     
     // Настройка моков для цепочек вызовов Firestore
     mocks.mockGet.mockResolvedValue({ exists: false });
@@ -161,27 +182,30 @@ describe('Rate Limit Middleware Unit Tests', () => {
   });
 
   describe('специализированные middleware', () => {
-    test('mobileRateLimit должен использовать правильные параметры', async () => {
+    test('mobileRateLimit должен вызывать getMobileRateLimitConfig', async () => {
       const middleware = mobileRateLimit();
       
       await middleware(mockRequest as Request, mockResponse as Response, mockNext);
       
+      expect(remoteConfigMocks.getMobileRateLimitConfig).toHaveBeenCalled();
       expect(mockResponse.setHeader).toHaveBeenCalledWith('X-RateLimit-Limit', '60');
     });
 
-    test('adminRateLimit должен использовать правильные параметры', async () => {
+    test('adminRateLimit должен вызывать getAdminRateLimitConfig', async () => {
       const middleware = adminRateLimit();
       
       await middleware(mockRequest as Request, mockResponse as Response, mockNext);
       
-      expect(mockResponse.setHeader).toHaveBeenCalledWith('X-RateLimit-Limit', '600');
+      expect(remoteConfigMocks.getAdminRateLimitConfig).toHaveBeenCalled();
+      expect(mockResponse.setHeader).toHaveBeenCalledWith('X-RateLimit-Limit', '300');
     });
 
-    test('hugsRateLimit должен использовать правильные параметры', async () => {
+    test('hugsRateLimit должен вызывать getHugsRateLimitConfig', async () => {
       const middleware = hugsRateLimit();
       
       await middleware(mockRequest as Request, mockResponse as Response, mockNext);
       
+      expect(remoteConfigMocks.getHugsRateLimitConfig).toHaveBeenCalled();
       expect(mockResponse.setHeader).toHaveBeenCalledWith('X-RateLimit-Limit', '10');
     });
   });
