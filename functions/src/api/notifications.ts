@@ -6,6 +6,7 @@ import { db } from '../core/firebase';
 import { NotificationToken } from '../types/firestore';
 import { getMaxNotificationTokens } from '../core/remoteConfig';
 import * as logger from 'firebase-functions/logger';
+import { FieldValue } from 'firebase-admin/firestore';
 
 const registerSchema = z.object({
   token: z.string().min(10).max(4096),
@@ -32,6 +33,7 @@ async function findTokenByValue(userId: string, token: string): Promise<Notifica
 
 async function createToken(userId: string, token: string, platform: 'ios' | 'android' | 'web', appVersion?: string): Promise<NotificationToken> {
   const tokensRef = db.collection('users').doc(userId).collection('notificationTokens');
+  const userRef = db.collection('users').doc(userId);
   const now = new Date();
   const timestamp = { seconds: Math.floor(now.getTime() / 1000), nanoseconds: (now.getTime() % 1000) * 1000000 };
   
@@ -46,8 +48,17 @@ async function createToken(userId: string, token: string, platform: 'ios' | 'and
     ...(appVersion && { appVersion }),
   };
   
+  // Создаем токен в подколлекции
   const docRef = await tokensRef.add(tokenData);
-  return { id: docRef.id, ...tokenData };
+  const newToken = { id: docRef.id, ...tokenData };
+  
+  // Обновляем массив pushTokens в документе пользователя
+  await userRef.update({
+    pushTokens: FieldValue.arrayUnion(token),
+    updatedAt: timestamp,
+  });
+  
+  return newToken;
 }
 
 async function updateTokenLastUsed(tokenId: string, userId: string): Promise<void> {
@@ -61,13 +72,21 @@ async function updateTokenLastUsed(tokenId: string, userId: string): Promise<voi
   });
 }
 
-async function deactivateToken(tokenId: string, userId: string): Promise<void> {
+async function deactivateToken(tokenId: string, userId: string, token: string): Promise<void> {
   const tokenRef = db.collection('users').doc(userId).collection('notificationTokens').doc(tokenId);
+  const userRef = db.collection('users').doc(userId);
   const now = new Date();
   const timestamp = { seconds: Math.floor(now.getTime() / 1000), nanoseconds: (now.getTime() % 1000) * 1000000 };
   
+  // Деактивируем токен в подколлекции
   await tokenRef.update({
     isActive: false,
+    updatedAt: timestamp,
+  });
+  
+  // Удаляем токен из массива pushTokens в документе пользователя
+  await userRef.update({
+    pushTokens: FieldValue.arrayRemove(token),
     updatedAt: timestamp,
   });
 }
@@ -128,9 +147,18 @@ notificationsRouter.post('/notifications.tokens', validateBody('register'), asyn
       await updateTokenLastUsed(existingToken.id, uid);
       if (!existingToken.isActive) {
         const tokenRef = db.collection('users').doc(uid).collection('notificationTokens').doc(existingToken.id);
+        const userRef = db.collection('users').doc(uid);
         const now = new Date();
         const timestamp = { seconds: Math.floor(now.getTime() / 1000), nanoseconds: (now.getTime() % 1000) * 1000000 };
+        
+        // Активируем токен в подколлекции
         await tokenRef.update({ isActive: true, updatedAt: timestamp });
+        
+        // Добавляем токен обратно в массив pushTokens
+        await userRef.update({
+          pushTokens: FieldValue.arrayUnion(token),
+          updatedAt: timestamp,
+        });
       }
       logger.info('FCM token reactivated', { userId: uid, tokenId: existingToken.id, platform: detectedPlatform });
       return res.status(200).json({ ok: true });
@@ -191,7 +219,7 @@ notificationsRouter.delete('/notifications.tokens', validateBody('unregister'), 
     }
     
     // Деактивируем токен вместо удаления (сохраняем историю)
-    await deactivateToken(existingToken.id, uid);
+    await deactivateToken(existingToken.id, uid, token);
     
     logger.info('FCM token deactivated', { 
       userId: uid, 

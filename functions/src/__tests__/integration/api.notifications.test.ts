@@ -51,6 +51,9 @@ describe('Notifications tokens API', () => {
     snapshot.docs.forEach(doc => batch.delete(doc.ref));
     await batch.commit();
     
+    // Очищаем pushTokens массив
+    await db.collection('users').doc(testUid).update({ pushTokens: [] });
+    
     // Сбрасываем Remote Config кэш
     clearConfigCache();
   });
@@ -285,5 +288,116 @@ describe('Notifications tokens API', () => {
     const tokensRef = db.collection('users').doc(testUid).collection('notificationTokens');
     const snapshot = await tokensRef.where('isActive', '==', true).get();
     expect(snapshot.size).toBe(3);
+  });
+
+  describe('Token denormalization', () => {
+    it('should add token to pushTokens array when registering', async () => {
+      const token = 'denorm-test-token';
+      
+      // Регистрируем токен
+      await request(app)
+        .post(route)
+        .set('X-Test-Uid', testUid)
+        .send({ token, platform: 'ios' })
+        .expect(200);
+      
+      // Проверяем, что токен добавлен в pushTokens массив
+      const userDoc = await db.collection('users').doc(testUid).get();
+      const userData = userDoc.data();
+      
+      expect(userData?.pushTokens).toContain(token);
+      expect(userData?.pushTokens).toHaveLength(1);
+    });
+
+    it('should remove token from pushTokens array when unregistering', async () => {
+      const token = 'denorm-test-token-2';
+      
+      // Сначала регистрируем токен
+      await request(app)
+        .post(route)
+        .set('X-Test-Uid', testUid)
+        .send({ token, platform: 'android' })
+        .expect(200);
+      
+      // Проверяем, что токен добавлен
+      let userDoc = await db.collection('users').doc(testUid).get();
+      let userData = userDoc.data();
+      expect(userData?.pushTokens).toContain(token);
+      
+      // Отменяем регистрацию токена
+      await request(app)
+        .delete(route)
+        .set('X-Test-Uid', testUid)
+        .send({ token })
+        .expect(200);
+      
+      // Проверяем, что токен удален из pushTokens
+      userDoc = await db.collection('users').doc(testUid).get();
+      userData = userDoc.data();
+      expect(userData?.pushTokens).not.toContain(token);
+      expect(userData?.pushTokens).toHaveLength(0);
+    });
+
+    it('should maintain consistency between subcollection and pushTokens array', async () => {
+      const tokens = ['consistency-token-1', 'consistency-token-2', 'consistency-token-3'];
+      
+      // Регистрируем несколько токенов
+      for (const token of tokens) {
+        await request(app)
+          .post(route)
+          .set('X-Test-Uid', testUid)
+          .send({ token, platform: 'web' })
+          .expect(200);
+      }
+      
+      // Проверяем консистентность
+      const userDoc = await db.collection('users').doc(testUid).get();
+      const userData = userDoc.data();
+      const pushTokens = userData?.pushTokens || [];
+      
+      const tokensRef = db.collection('users').doc(testUid).collection('notificationTokens');
+      const activeTokensSnapshot = await tokensRef.where('isActive', '==', true).get();
+      const activeTokens = activeTokensSnapshot.docs.map(doc => doc.data().token);
+      
+      expect(pushTokens).toHaveLength(3);
+      expect(activeTokens).toHaveLength(3);
+      expect(pushTokens.sort()).toEqual(activeTokens.sort());
+    });
+
+    it('should handle reactivation correctly', async () => {
+      const token = 'reactivation-test-token';
+      
+      // Регистрируем токен
+      await request(app)
+        .post(route)
+        .set('X-Test-Uid', testUid)
+        .send({ token, platform: 'ios' })
+        .expect(200);
+      
+      // Отменяем регистрацию
+      await request(app)
+        .delete(route)
+        .set('X-Test-Uid', testUid)
+        .send({ token })
+        .expect(200);
+      
+      // Проверяем, что токен удален из pushTokens
+      let userDoc = await db.collection('users').doc(testUid).get();
+      let userData = userDoc.data();
+      expect(userData?.pushTokens).not.toContain(token);
+      
+      // Регистрируем токен снова (реактивация)
+      await request(app)
+        .post(route)
+        .set('X-Test-Uid', testUid)
+        .send({ token, platform: 'ios' })
+        .expect(200);
+      
+      // Проверяем, что токен снова добавлен в pushTokens
+      userDoc = await db.collection('users').doc(testUid).get();
+      userData = userDoc.data();
+      expect(userData?.pushTokens).toContain(token);
+      expect(userData?.pushTokens).toHaveLength(1);
+    });
   });
 });

@@ -2,6 +2,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 import { db } from '../core/firebase';
 import { getTokenRetentionDays, getCleanupBatchSize } from '../core/remoteConfig';
+import { FieldValue } from 'firebase-admin/firestore';
 
 /**
  * Фоновая задача для очистки старых/неактивных токенов уведомлений
@@ -78,11 +79,15 @@ export const scheduledCleanup = onSchedule({
 
           // Удаляем токены батчами по 20 (лимит Firestore)
           const tokensToDelete = tokensSnapshot.docs;
+          const tokensToRemoveFromArray: string[] = [];
+          
           for (let i = 0; i < tokensToDelete.length; i += 20) {
             const batch = db.batch();
             const batchTokens = tokensToDelete.slice(i, i + 20);
             
             batchTokens.forEach((tokenDoc) => {
+              const tokenData = tokenDoc.data();
+              tokensToRemoveFromArray.push(tokenData.token);
               batch.delete(tokenDoc.ref);
             });
 
@@ -90,6 +95,20 @@ export const scheduledCleanup = onSchedule({
             totalDeleted += batchTokens.length;
             
             logger.debug(`Deleted batch of ${batchTokens.length} tokens for user ${userId}`);
+          }
+          
+          // Обновляем массив pushTokens в документе пользователя
+          if (tokensToRemoveFromArray.length > 0) {
+            const userRef = db.collection('users').doc(userId);
+            await userRef.update({
+              pushTokens: FieldValue.arrayRemove(...tokensToRemoveFromArray),
+              updatedAt: { 
+                seconds: Math.floor(Date.now() / 1000), 
+                nanoseconds: (Date.now() % 1000) * 1000000 
+              },
+            });
+            
+            logger.debug(`Updated pushTokens array for user ${userId}, removed ${tokensToRemoveFromArray.length} tokens`);
           }
 
         } catch (error) {

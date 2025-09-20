@@ -35,6 +35,9 @@ describe('scheduledCleanup', () => {
         batch.delete(tokenDoc.ref);
       });
       
+      // Очищаем pushTokens массив
+      batch.update(userDoc.ref, { pushTokens: [] });
+      
       // Удаляем пользователя
       batch.delete(userDoc.ref);
     }
@@ -237,4 +240,85 @@ describe('scheduledCleanup', () => {
     const usersSnapshot = await db.collection('users').get();
     expect(usersSnapshot.size).toBe(3);
   }, 15000); // Увеличиваем таймаут теста
+
+  it('should update pushTokens array when cleaning up tokens', async () => {
+    const userId = 'test_user_denormalization';
+    
+    // Создаем пользователя с pushTokens массивом
+    await db.collection('users').doc(userId).set({
+      displayName: 'Test User Denormalization',
+      pushTokens: ['old-token-1', 'old-token-2', 'active-token'],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const now = new Date();
+    const oldDate = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000); // 10 дней назад
+    const recentDate = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000); // 2 дня назад
+
+    // Создаем токены
+    const tokensRef = db.collection('users').doc(userId).collection('notificationTokens');
+    
+    // Старые неактивные токены (должны быть удалены)
+    await tokensRef.add({
+      userId,
+      token: 'old-token-1',
+      platform: 'ios',
+      isActive: false,
+      lastUsedAt: oldDate,
+      createdAt: oldDate,
+      updatedAt: oldDate,
+    });
+    
+    await tokensRef.add({
+      userId,
+      token: 'old-token-2',
+      platform: 'android',
+      isActive: false,
+      lastUsedAt: oldDate,
+      createdAt: oldDate,
+      updatedAt: oldDate,
+    });
+    
+    // Активный токен (не должен быть удален)
+    await tokensRef.add({
+      userId,
+      token: 'active-token',
+      platform: 'web',
+      isActive: true,
+      lastUsedAt: oldDate,
+      createdAt: oldDate,
+      updatedAt: oldDate,
+    });
+
+    // Проверяем начальное состояние
+    let userDoc = await db.collection('users').doc(userId).get();
+    let userData = userDoc.data();
+    expect(userData?.pushTokens).toContain('old-token-1');
+    expect(userData?.pushTokens).toContain('old-token-2');
+    expect(userData?.pushTokens).toContain('active-token');
+
+    // Создаем мок события
+    const mockEvent = {
+      jobName: 'test-execution-id',
+      scheduleTime: new Date().toISOString(),
+    };
+
+    // Запускаем функцию очистки с таймаутом
+    const cleanupPromise = scheduledCleanup.run(mockEvent);
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Test timeout')), 10000)
+    );
+    
+    await Promise.race([cleanupPromise, timeoutPromise]);
+
+    // Проверяем, что старые токены удалены из pushTokens
+    userDoc = await db.collection('users').doc(userId).get();
+    userData = userDoc.data();
+    
+    expect(userData?.pushTokens).not.toContain('old-token-1');
+    expect(userData?.pushTokens).not.toContain('old-token-2');
+    expect(userData?.pushTokens).toContain('active-token');
+    expect(userData?.pushTokens).toHaveLength(1);
+  }, 15000);
 });
