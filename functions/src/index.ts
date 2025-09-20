@@ -19,6 +19,7 @@ import { processOutbox } from './background/outboxWorker';
 import { scheduledCleanup } from './background/scheduledCleanup';
 import { practiceRemindersHandler, scheduledPracticeRemindersHandler } from './background/practiceReminders';
 import { otaNotificationsHandler } from './background/otaNotifications';
+import { aggregateStats, manualStatsAggregation } from './background/statsAggregator';
 
 // For cost control, you can set the maximum number of containers that can be
 // running at the same time. This helps mitigate the impact of unexpected
@@ -41,5 +42,6 @@ export { processOutbox };
 export { scheduledCleanup };
 export { practiceRemindersHandler, scheduledPracticeRemindersHandler };
 export { otaNotificationsHandler };
+export { aggregateStats, manualStatsAggregation };
 
 logger.info('Amulet Backend functions loaded', {structuredData: true});

@@ -341,6 +341,7 @@ export class RoleManager {
   /**
    * Получить список пользователей с определенной ролью
    */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   static async getUsersWithRole(_role: 'admin' | 'moderator'): Promise<string[]> {
     // Firebase Admin SDK не предоставляет прямой способ поиска по custom claims
     // В реальном приложении можно использовать Cloud Functions или хранить роли в Firestore

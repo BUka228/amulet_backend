@@ -485,43 +485,69 @@ adminRouter.get('/admin/firmware', async (req: Request, res: Response) => {
 // GET /v1/admin/stats/overview — общая статистика для админки
 adminRouter.get('/admin/stats/overview', async (req: Request, res: Response) => {
   try {
+    // Читаем пре-агрегированную статистику из Firestore
+    const statsDoc = await db.collection('statistics').doc('overview').get();
+    
+    if (!statsDoc.exists) {
+      // Если статистика еще не агрегирована, возвращаем базовую информацию
+      logger.warn('Statistics not yet aggregated, returning empty stats', {
+        requestId: req.headers['x-request-id']
+      });
+      
+      return res.status(200).json({
+        users: { total: 0, activeToday: 0, newToday: 0 },
+        devices: { total: 0, online: 0, newToday: 0 },
+        patterns: { total: 0, public: 0, newToday: 0 },
+        practices: { total: 0, active: 0, newToday: 0 },
+        firmware: { total: 0, published: 0, newToday: 0 },
+        activity: { hugs: { today: 0, week: 0 }, sessions: { today: 0, week: 0 } },
+        overview: {
+          totalUsers: 0,
+          totalDevices: 0,
+          totalPatterns: 0,
+          totalPractices: 0,
+          totalFirmware: 0,
+          activeUsersToday: 0,
+          newUsersToday: 0,
+          hugsToday: 0,
+          sessionsToday: 0
+        },
+        lastUpdated: null,
+        aggregationPeriod: 'not available',
+        nextUpdate: null
+      });
+    }
+
+    const stats = statsDoc.data();
+    
+    // Проверяем актуальность данных (если старше 2 часов, предупреждаем)
+    let lastUpdated: Date | null = null;
+    try {
+      if (stats?.lastUpdated) {
+        lastUpdated = stats.lastUpdated.toDate ? stats.lastUpdated.toDate() : new Date(stats.lastUpdated);
+      }
+    } catch (error) {
+      logger.warn('Invalid lastUpdated date in statistics', {
+        lastUpdated: stats?.lastUpdated,
+        requestId: req.headers['x-request-id']
+      });
+    }
+    
     const now = new Date();
-    const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-    // Получаем статистику параллельно
-    const [usersCount, devicesCount, patternsCount, hugsCount, sessionsCount] = await Promise.all([
-      db.collection('users').where('isDeleted', '==', false).get().then((snap) => snap.size),
-      db.collection('devices').get().then((snap) => snap.size),
-      db.collection('patterns').get().then((snap) => snap.size),
-      db.collection('hugs').where('createdAt', '>=', dayAgo).get().then((snap) => snap.size),
-      db.collection('sessions').where('createdAt', '>=', dayAgo).get().then((snap) => snap.size)
-    ]);
-
-    const stats = {
-      users: {
-        total: usersCount,
-        active: usersCount // упрощенно, в реальности нужна более сложная логика
-      },
-      devices: {
-        total: devicesCount,
-        online: 0 // нужно будет добавить реальный подсчет
-      },
-      content: {
-        patterns: patternsCount,
-        practices: 0 // нужно будет добавить подсчет практик
-      },
-      activity: {
-        hugsToday: hugsCount,
-        sessionsToday: sessionsCount
-      },
-      timestamp: now.toISOString()
-    };
+    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+    
+    if (lastUpdated && lastUpdated < twoHoursAgo) {
+      logger.warn('Statistics data is stale', {
+        lastUpdated: lastUpdated.toISOString(),
+        requestId: req.headers['x-request-id']
+      });
+    }
 
     return res.status(200).json(stats);
   } catch (error) {
     logger.error('Admin stats overview failed', { 
-      error: error instanceof Error ? error.message : 'Unknown error', 
-      requestId: req.headers['x-request-id'] 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      requestId: req.headers['x-request-id']
     });
     return sendError(res, { code: 'unavailable', message: 'Failed to get statistics' });
   }

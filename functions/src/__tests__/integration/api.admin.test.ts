@@ -556,12 +556,27 @@ describe('Integration: Admin Statistics', () => {
       .set('X-Test-Admin', '1')
       .expect(200);
     
-    expect(res.body.users.total).toBe(1);
-    expect(res.body.devices.total).toBe(1);
-    expect(res.body.content.patterns).toBe(1);
-    expect(res.body.activity.hugsToday).toBeGreaterThanOrEqual(0);
-    expect(res.body.activity.sessionsToday).toBeGreaterThanOrEqual(0);
-    expect(res.body.timestamp).toBeDefined();
+    // Проверяем новую структуру статистики
+    expect(res.body).toHaveProperty('users');
+    expect(res.body).toHaveProperty('devices');
+    expect(res.body).toHaveProperty('patterns');
+    expect(res.body).toHaveProperty('practices');
+    expect(res.body).toHaveProperty('firmware');
+    expect(res.body).toHaveProperty('activity');
+    expect(res.body).toHaveProperty('overview');
+    expect(res.body).toHaveProperty('lastUpdated');
+    expect(res.body).toHaveProperty('aggregationPeriod');
+    
+    // Проверяем, что статистика содержит ожидаемые поля
+    expect(res.body.users).toHaveProperty('total');
+    expect(res.body.devices).toHaveProperty('total');
+    expect(res.body.patterns).toHaveProperty('total');
+    expect(res.body.practices).toHaveProperty('total');
+    expect(res.body.firmware).toHaveProperty('total');
+    expect(res.body.activity).toHaveProperty('hugs');
+    expect(res.body.activity).toHaveProperty('sessions');
+    expect(res.body.overview).toHaveProperty('totalUsers');
+    expect(res.body.overview).toHaveProperty('totalDevices');
   });
 
   test('reject non-admin statistics access', async () => {
