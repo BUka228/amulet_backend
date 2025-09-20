@@ -12,7 +12,19 @@ import {
   getOutboxRetryAttempts,
   getOutboxRetryBackoffBaseMs,
   clearConfigCache,
-  setConfigValue
+  setConfigValue,
+  // Новые функции для шага 11
+  isApiV1Deprecated,
+  getHugsCooldownMs,
+  isPreviewEnabled,
+  isPatternValidationStrict,
+  getFcmDeliveryTimeoutMs,
+  getDeviceClaimTimeoutMinutes,
+  getTelemetryBatchSize,
+  getTelemetryFlushIntervalMs,
+  isMaintenanceMode,
+  getFeatureFlags,
+  isFeatureEnabled
 } from '../../core/remoteConfig';
 
 describe('Remote Config', () => {
@@ -145,6 +157,138 @@ describe('Remote Config', () => {
       expect(await getWebhookTimeoutSeconds()).toBe(30);
       expect(await getOutboxRetryAttempts()).toBe(5);
       expect(await getOutboxRetryBackoffBaseMs()).toBe(1000);
+    });
+  });
+
+  // ===== Тесты для новых функций шага 11 =====
+
+  describe('step 11 - new feature flags and timing', () => {
+    describe('API deprecation', () => {
+      it('isApiV1Deprecated returns false by default', async () => {
+        expect(await isApiV1Deprecated()).toBe(false);
+      });
+
+      it('isApiV1Deprecated returns configured value', async () => {
+        setConfigValue('api_deprecation_v1', true);
+        expect(await isApiV1Deprecated()).toBe(true);
+      });
+    });
+
+    describe('hugs cooldown', () => {
+      it('getHugsCooldownMs returns correct default value', async () => {
+        expect(await getHugsCooldownMs()).toBe(60000);
+      });
+
+      it('getHugsCooldownMs returns configured value', async () => {
+        setConfigValue('hugs_cooldown_ms', 30000);
+        expect(await getHugsCooldownMs()).toBe(30000);
+      });
+    });
+
+    describe('preview feature', () => {
+      it('isPreviewEnabled returns true by default', async () => {
+        expect(await isPreviewEnabled()).toBe(true);
+      });
+
+      it('isPreviewEnabled returns configured value', async () => {
+        setConfigValue('preview_enabled', false);
+        expect(await isPreviewEnabled()).toBe(false);
+      });
+    });
+
+    describe('pattern validation', () => {
+      it('isPatternValidationStrict returns false by default', async () => {
+        expect(await isPatternValidationStrict()).toBe(false);
+      });
+
+      it('isPatternValidationStrict returns configured value', async () => {
+        setConfigValue('pattern_validation_strict', true);
+        expect(await isPatternValidationStrict()).toBe(true);
+      });
+    });
+
+    describe('FCM delivery timeout', () => {
+      it('getFcmDeliveryTimeoutMs returns correct default value', async () => {
+        expect(await getFcmDeliveryTimeoutMs()).toBe(30000);
+      });
+
+      it('getFcmDeliveryTimeoutMs returns configured value', async () => {
+        setConfigValue('fcm_delivery_timeout_ms', 15000);
+        expect(await getFcmDeliveryTimeoutMs()).toBe(15000);
+      });
+    });
+
+    describe('device claim timeout', () => {
+      it('getDeviceClaimTimeoutMinutes returns correct default value', async () => {
+        expect(await getDeviceClaimTimeoutMinutes()).toBe(10);
+      });
+
+      it('getDeviceClaimTimeoutMinutes returns configured value', async () => {
+        setConfigValue('device_claim_timeout_minutes', 5);
+        expect(await getDeviceClaimTimeoutMinutes()).toBe(5);
+      });
+    });
+
+    describe('telemetry settings', () => {
+      it('getTelemetryBatchSize returns correct default value', async () => {
+        expect(await getTelemetryBatchSize()).toBe(100);
+      });
+
+      it('getTelemetryFlushIntervalMs returns correct default value', async () => {
+        expect(await getTelemetryFlushIntervalMs()).toBe(60000);
+      });
+
+      it('returns configured values', async () => {
+        setConfigValue('telemetry_batch_size', 50);
+        setConfigValue('telemetry_flush_interval_ms', 30000);
+        expect(await getTelemetryBatchSize()).toBe(50);
+        expect(await getTelemetryFlushIntervalMs()).toBe(30000);
+      });
+    });
+
+    describe('maintenance mode', () => {
+      it('isMaintenanceMode returns false by default', async () => {
+        expect(await isMaintenanceMode()).toBe(false);
+      });
+
+      it('isMaintenanceMode returns configured value', async () => {
+        setConfigValue('maintenance_mode', true);
+        expect(await isMaintenanceMode()).toBe(true);
+      });
+    });
+
+    describe('feature flags', () => {
+      it('getFeatureFlags returns correct default values', async () => {
+        const flags = await getFeatureFlags();
+        expect(flags).toEqual({
+          advanced_patterns: true,
+          social_features: true,
+          analytics: false
+        });
+      });
+
+      it('getFeatureFlags returns configured values', async () => {
+        const customFlags = {
+          advanced_patterns: false,
+          social_features: false,
+          analytics: true
+        };
+        setConfigValue('feature_flags', customFlags);
+        const flags = await getFeatureFlags();
+        expect(flags).toEqual(customFlags);
+      });
+
+      it('isFeatureEnabled works correctly', async () => {
+        setConfigValue('feature_flags', {
+          advanced_patterns: true,
+          social_features: false,
+          analytics: true
+        });
+
+        expect(await isFeatureEnabled('advanced_patterns')).toBe(true);
+        expect(await isFeatureEnabled('social_features')).toBe(false);
+        expect(await isFeatureEnabled('analytics')).toBe(true);
+      });
     });
   });
 });

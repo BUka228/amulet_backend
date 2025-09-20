@@ -18,6 +18,7 @@ import { idempotencyMiddleware } from './idempotency';
 import { log } from './structuredLogger';
 import { tracingMiddleware } from './tracing';
 import { metricsMiddleware } from './monitoring';
+import { isMaintenanceMode, isApiV1Deprecated } from './remoteConfig';
 
 type ErrorCode =
   | 'unauthenticated'
@@ -31,7 +32,9 @@ type ErrorCode =
   | 'unavailable'
   | 'rate_limit_exceeded'
   | 'idempotency_key_conflict'
-  | 'validation_failed';
+  | 'validation_failed'
+  | 'maintenance_mode'
+  | 'api_deprecated';
 
 export interface ApiError {
   code: ErrorCode | string;
@@ -58,7 +61,10 @@ export function mapErrorCodeToStatus(code: string): number {
     case 'failed_precondition':
       return 412;
     case 'unavailable':
+    case 'maintenance_mode':
       return 503;
+    case 'api_deprecated':
+      return 410;
     default:
       return 500;
   }
@@ -179,12 +185,58 @@ export function errorHandler() {
   };
 }
 
+/**
+ * Middleware для проверки режима технического обслуживания
+ */
+export function maintenanceModeMiddleware() {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const maintenanceMode = await isMaintenanceMode();
+      if (maintenanceMode) {
+        return sendError(res, {
+          code: 'maintenance_mode',
+          message: 'Service temporarily unavailable due to maintenance',
+          details: { retryAfter: 3600 } // 1 час
+        });
+      }
+      next();
+    } catch (error) {
+      // В случае ошибки получения конфигурации, продолжаем работу
+      log.warn('Failed to check maintenance mode', { error: error instanceof Error ? error.message : 'Unknown error' });
+      next();
+    }
+  };
+}
+
+/**
+ * Middleware для проверки депрекации API v1
+ */
+export function apiDeprecationMiddleware() {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isDeprecated = await isApiV1Deprecated();
+      if (isDeprecated && req.path.startsWith('/v1/')) {
+        res.setHeader('Deprecation', 'true');
+        res.setHeader('Sunset', '2025-12-31T23:59:59Z'); // Пример даты окончания поддержки
+        res.setHeader('Link', '</v2/>; rel="successor-version"'); // Ссылка на новую версию
+      }
+      next();
+    } catch (error) {
+      // В случае ошибки получения конфигурации, продолжаем работу
+      log.warn('Failed to check API deprecation status', { error: error instanceof Error ? error.message : 'Unknown error' });
+      next();
+    }
+  };
+}
+
 // Конструктор стандартного набора middleware для API
 export function applyBaseMiddlewares(app: express.Express) {
   app.use(requestIdMiddleware());
   app.use(tracingMiddleware()); // Трейсинг должен быть первым
   app.use(metricsMiddleware()); // Метрики после трейсинга
   app.use(loggingMiddleware());
+  app.use(maintenanceModeMiddleware()); // Проверка режима обслуживания
+  app.use(apiDeprecationMiddleware()); // Проверка депрекации API
   app.use(corsMiddleware());
   app.use(jsonMiddleware());
   app.use(etagMiddleware());

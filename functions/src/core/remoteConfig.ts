@@ -41,6 +41,17 @@ const DEFAULT_VALUES = {
   rate_limit_public_window_sec: 60,
   rate_limit_default_limit: 60,
   rate_limit_default_window_sec: 60,
+  // Новые параметры для шага 11
+  api_deprecation_v1: false,
+  hugs_cooldown_ms: 60000,
+  preview_enabled: true,
+  pattern_validation_strict: false,
+  fcm_delivery_timeout_ms: 30000,
+  device_claim_timeout_minutes: 10,
+  telemetry_batch_size: 100,
+  telemetry_flush_interval_ms: 60000,
+  maintenance_mode: false,
+  feature_flags: { advanced_patterns: true, social_features: true, analytics: false },
 } as const;
 
 type ConfigKey = keyof typeof DEFAULT_VALUES;
@@ -76,9 +87,29 @@ export async function getConfigValue<T = unknown>(key: ConfigKey): Promise<T> {
         // Пытаемся распарсить как JSON для сложных типов
         if (typeof value === 'string') {
           try {
-            value = JSON.parse(value);
+            const parsed = JSON.parse(value);
+            value = parsed;
           } catch {
-            // Оставляем как строку, если не JSON
+            // Если не JSON, пытаемся преобразовать в число или булево значение
+            if (value === 'true') {
+              value = true;
+            } else if (value === 'false') {
+              value = false;
+            } else if (!isNaN(Number(value)) && value.trim() !== '') {
+              value = Number(value);
+            }
+            // Иначе оставляем как строку
+          }
+        }
+        
+        // Дополнительная проверка для тестовой среды
+        if (typeof value === 'string') {
+          if (value === 'true') {
+            value = true;
+          } else if (value === 'false') {
+            value = false;
+          } else if (!isNaN(Number(value)) && value.trim() !== '') {
+            value = Number(value);
           }
         }
         
@@ -206,7 +237,27 @@ export function clearConfigCache(): void {
  * Устанавливает значение в кэш (для тестов)
  */
 export function setConfigValue(key: ConfigKey, value: unknown): void {
-  configCache[key] = value;
+  // Применяем преобразование типов для тестов
+  let processedValue = value;
+  
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      processedValue = parsed;
+    } catch {
+      // Если не JSON, пытаемся преобразовать в число или булево значение
+      if (value === 'true') {
+        processedValue = true;
+      } else if (value === 'false') {
+        processedValue = false;
+      } else if (!isNaN(Number(value)) && value.trim() !== '') {
+        processedValue = Number(value);
+      }
+      // Иначе оставляем как строку
+    }
+  }
+  
+  configCache[key] = processedValue;
 }
 
 /**
@@ -273,4 +324,96 @@ export async function getDefaultRateLimitConfig(): Promise<{ limit: number; wind
     getConfigValue<number>('rate_limit_default_window_sec')
   ]);
   return { limit, windowSec };
+}
+
+// ===== Новые функции для шага 11 =====
+
+/**
+ * Проверяет, помечен ли API v1 как устаревший
+ */
+export async function isApiV1Deprecated(): Promise<boolean> {
+  return await getConfigValue<boolean>('api_deprecation_v1');
+}
+
+/**
+ * Получает кулдаун между объятиями в миллисекундах
+ */
+export async function getHugsCooldownMs(): Promise<number> {
+  return await getConfigValue<number>('hugs_cooldown_ms');
+}
+
+/**
+ * Проверяет, включен ли предварительный просмотр паттернов
+ */
+export async function isPreviewEnabled(): Promise<boolean> {
+  return await getConfigValue<boolean>('preview_enabled');
+}
+
+/**
+ * Проверяет, включена ли строгая валидация паттернов
+ */
+export async function isPatternValidationStrict(): Promise<boolean> {
+  return await getConfigValue<boolean>('pattern_validation_strict');
+}
+
+/**
+ * Получает таймаут доставки FCM уведомлений в миллисекундах
+ */
+export async function getFcmDeliveryTimeoutMs(): Promise<number> {
+  return await getConfigValue<number>('fcm_delivery_timeout_ms');
+}
+
+/**
+ * Получает таймаут привязки устройства в минутах
+ */
+export async function getDeviceClaimTimeoutMinutes(): Promise<number> {
+  return await getConfigValue<number>('device_claim_timeout_minutes');
+}
+
+/**
+ * Получает размер батча для отправки телеметрии
+ */
+export async function getTelemetryBatchSize(): Promise<number> {
+  return await getConfigValue<number>('telemetry_batch_size');
+}
+
+/**
+ * Получает интервал отправки телеметрии в миллисекундах
+ */
+export async function getTelemetryFlushIntervalMs(): Promise<number> {
+  return await getConfigValue<number>('telemetry_flush_interval_ms');
+}
+
+/**
+ * Проверяет, включен ли режим технического обслуживания
+ */
+export async function isMaintenanceMode(): Promise<boolean> {
+  return await getConfigValue<boolean>('maintenance_mode');
+}
+
+/**
+ * Получает флаги функций как объект
+ */
+export async function getFeatureFlags(): Promise<{
+  advanced_patterns: boolean;
+  social_features: boolean;
+  analytics: boolean;
+}> {
+  return await getConfigValue<{
+    advanced_patterns: boolean;
+    social_features: boolean;
+    analytics: boolean;
+  }>('feature_flags');
+}
+
+/**
+ * Проверяет, включена ли конкретная функция
+ */
+export async function isFeatureEnabled(feature: keyof {
+  advanced_patterns: boolean;
+  social_features: boolean;
+  analytics: boolean;
+}): Promise<boolean> {
+  const flags = await getFeatureFlags();
+  return flags[feature];
 }

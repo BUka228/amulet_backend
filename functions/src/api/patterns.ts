@@ -6,6 +6,7 @@ import * as logger from 'firebase-functions/logger';
 import { z } from 'zod';
 import { downLevelPatternSpec, PatternSpec } from '../core/patterns';
 import { getMessaging } from 'firebase-admin/messaging';
+import { isPreviewEnabled } from '../core/remoteConfig';
 
 export const patternsRouter = express.Router();
 
@@ -370,6 +371,16 @@ patternsRouter.post('/patterns/:id/share', validateBody('share'), async (req: Re
 patternsRouter.post('/patterns/preview', validateBody('preview'), async (req: Request, res: Response) => {
   const uid = req.auth?.user.uid;
   if (!uid) return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
+
+  // Проверяем, включен ли предварительный просмотр
+  const previewEnabled = await isPreviewEnabled();
+  if (!previewEnabled) {
+    return sendError(res, { 
+      code: 'failed_precondition', 
+      message: 'Pattern preview feature is currently disabled' 
+    });
+  }
+
   try {
     const { deviceId, spec, duration } = req.body as { deviceId: string; spec: PatternSpec; duration?: number };
     // В MVP просто валидируем, что устройство принадлежит пользователю

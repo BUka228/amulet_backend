@@ -5,6 +5,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../core/firebase';
 import { z } from 'zod';
 import * as logger from 'firebase-functions/logger';
+import { getHugsCooldownMs } from '../core/remoteConfig';
 
 // Валидация входа для /hugs.send
 const hugSendSchema = z
@@ -63,6 +64,30 @@ hugsRouter.post('/hugs.send', validateBody('send'), async (req: Request, res: Re
   }
 
   try {
+    // Проверяем кулдаун между отправкой объятий
+    const cooldownMs = await getHugsCooldownMs();
+    const currentTime = Date.now();
+    const lastHugQuery = await db
+      .collection('hugs')
+      .where('fromUserId', '==', fromUserId)
+      .orderBy('createdAt', 'desc')
+      .limit(1)
+      .get();
+
+    if (!lastHugQuery.empty) {
+      const lastHug = lastHugQuery.docs[0].data();
+      const lastHugTime = lastHug.createdAt?.toMillis?.() || 0;
+      const timeSinceLastHug = currentTime - lastHugTime;
+      
+      if (timeSinceLastHug < cooldownMs) {
+        const remainingCooldown = Math.ceil((cooldownMs - timeSinceLastHug) / 1000);
+        return sendError(res, {
+          code: 'resource_exhausted',
+          message: `Please wait ${remainingCooldown} seconds before sending another hug`,
+          details: { retryAfter: remainingCooldown }
+        });
+      }
+    }
     const { toUserId: toUserIdRaw, pairId: pairIdRaw, emotion, payload, inReplyToHugId } = req.body as {
       toUserId?: string;
       pairId?: string;

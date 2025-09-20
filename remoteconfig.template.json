@@ -149,6 +149,66 @@
         "value": "60"
       },
       "description": "Окно времени для лимита по умолчанию в секундах"
+    },
+    "api_deprecation_v1": {
+      "defaultValue": {
+        "value": "false"
+      },
+      "description": "Флаг депрекации API v1 (true = API v1 помечен как устаревший)"
+    },
+    "hugs_cooldown_ms": {
+      "defaultValue": {
+        "value": "60000"
+      },
+      "description": "Кулдаун между отправкой объятий в миллисекундах"
+    },
+    "preview_enabled": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Флаг включения функции предварительного просмотра паттернов"
+    },
+    "pattern_validation_strict": {
+      "defaultValue": {
+        "value": "false"
+      },
+      "description": "Строгая валидация паттернов (true = дополнительные проверки)"
+    },
+    "fcm_delivery_timeout_ms": {
+      "defaultValue": {
+        "value": "30000"
+      },
+      "description": "Таймаут доставки FCM уведомлений в миллисекундах"
+    },
+    "device_claim_timeout_minutes": {
+      "defaultValue": {
+        "value": "10"
+      },
+      "description": "Таймаут привязки устройства в минутах"
+    },
+    "telemetry_batch_size": {
+      "defaultValue": {
+        "value": "100"
+      },
+      "description": "Размер батча для отправки телеметрии"
+    },
+    "telemetry_flush_interval_ms": {
+      "defaultValue": {
+        "value": "60000"
+      },
+      "description": "Интервал отправки телеметрии в миллисекундах"
+    },
+    "maintenance_mode": {
+      "defaultValue": {
+        "value": "false"
+      },
+      "description": "Режим технического обслуживания (true = API недоступен)"
+    },
+    "feature_flags": {
+      "defaultValue": {
+        "value": "{\"advanced_patterns\": true, \"social_features\": true, \"analytics\": false}"
+      },
+      "description": "JSON объект с флагами функций"
     }
   },
   "parameterGroups": {
@@ -201,15 +261,35 @@
         "rate_limit_default_limit": {},
         "rate_limit_default_window_sec": {}
       }
+    },
+    "feature_flags": {
+      "description": "Флаги функций и депрекации",
+      "parameters": {
+        "api_deprecation_v1": {},
+        "preview_enabled": {},
+        "pattern_validation_strict": {},
+        "maintenance_mode": {},
+        "feature_flags": {}
+      }
+    },
+    "timing": {
+      "description": "Таймауты и интервалы",
+      "parameters": {
+        "hugs_cooldown_ms": {},
+        "fcm_delivery_timeout_ms": {},
+        "device_claim_timeout_minutes": {},
+        "telemetry_batch_size": {},
+        "telemetry_flush_interval_ms": {}
+      }
     }
   },
   "conditions": [],
   "version": {
-    "versionNumber": "1",
+    "versionNumber": "2",
     "updateTime": "2024-01-20T00:00:00.000Z",
     "updateUser": {
       "email": "admin@amulet.app"
     },
-    "description": "Initial configuration"
+    "description": "Added feature flags and timing parameters for step 11"
   }
 }
