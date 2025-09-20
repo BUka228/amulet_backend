@@ -10,10 +10,7 @@
  * - Devices & OTA
  */
 
-// import { DashboardsServiceClient } from '@google-cloud/monitoring'; // Временно отключено
 import { DASHBOARD_CONFIGS } from '../core/sloConfig';
-
-// const client = new DashboardsServiceClient(); // Временно отключено
 
 interface DashboardWidget {
   title: string;
@@ -56,7 +53,11 @@ interface Dashboard {
   };
 }
 
-async function createDashboard(name: string, config: typeof DASHBOARD_CONFIGS.api_overview) {
+interface DashboardClient {
+  createDashboard: (request: { parent: string; dashboard: Dashboard }) => Promise<[{ name: string }]>;
+}
+
+async function createDashboard(name: string, config: typeof DASHBOARD_CONFIGS.api_overview, client: DashboardClient) {
   const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT;
   if (!projectId) {
     throw new Error('GOOGLE_CLOUD_PROJECT not set');
@@ -117,15 +118,12 @@ async function createDashboard(name: string, config: typeof DASHBOARD_CONFIGS.ap
   });
 
   try {
-    // Временно отключено до исправления импортов
-    // const [result] = await client.createDashboard({
-    //   parent: `projects/${projectId}`,
-    //   dashboard,
-    // });
-    // console.log(`✅ Dashboard created: ${result.name}`);
-    // return result;
-    console.log(`✅ Dashboard ${name} would be created (client disabled)`);
-    return null;
+    const [result] = await client.createDashboard({
+      parent: `projects/${projectId}`,
+      dashboard,
+    });
+    console.log(`✅ Dashboard created: ${result.name}`);
+    return result;
   } catch (error) {
     console.error(`❌ Failed to create dashboard ${name}:`, error);
     throw error;
@@ -153,10 +151,25 @@ function getMetricTitle(metricType: string): string {
 async function createAllDashboards() {
   console.log('🚀 Creating monitoring dashboards...');
 
+  // Проверяем переменные окружения
+  const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT;
+  if (!projectId) {
+    console.error('❌ GOOGLE_CLOUD_PROJECT environment variable is not set');
+    console.log('Please set it with: export GOOGLE_CLOUD_PROJECT=your-project-id');
+    process.exit(1);
+  }
+
+  console.log(`📋 Using project: ${projectId}`);
+
   try {
+    // Динамический импорт клиента
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const monitoring = require('@google-cloud/monitoring');
+    const client = new monitoring.DashboardsServiceClient();
+
     for (const [name, config] of Object.entries(DASHBOARD_CONFIGS)) {
       console.log(`📊 Creating dashboard: ${config.title}`);
-      await createDashboard(name, config);
+      await createDashboard(name, config, client);
     }
 
     console.log('🎉 All dashboards created successfully!');
@@ -168,6 +181,10 @@ async function createAllDashboards() {
 
   } catch (error) {
     console.error('❌ Failed to create dashboards:', error);
+    console.log('\nTroubleshooting:');
+    console.log('1. Ensure you have the Monitoring Admin role');
+    console.log('2. Check that the project ID is correct');
+    console.log('3. Verify authentication: gcloud auth application-default login');
     process.exit(1);
   }
 }
