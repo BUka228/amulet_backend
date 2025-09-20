@@ -382,11 +382,42 @@ describe('POST /v1/devices/:id/firmware/report', () => {
     expect(report).toMatchObject({
       deviceId,
       ownerId: 'test-user-1',
+      hardwareVersion: 200,
       fromVersion: '2.0.0',
       toVersion: '2.1.0',
       status: 'success',
       errorCode: null,
       errorMessage: null
+    });
+  });
+
+  it('должен возвращать 412 если у устройства отсутствует hardwareVersion', async () => {
+    // Создаём устройство без hardwareVersion
+    const deviceWithoutHwRef = await db.collection('devices').add({
+      ownerId: 'test-user-1',
+      serial: 'TEST-NO-HW',
+      firmwareVersion: '2.0.0',
+      name: 'Test Device No HW',
+      batteryLevel: 100,
+      status: 'online',
+      pairedAt: Timestamp.now(),
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    });
+
+    const response = await request(app)
+      .post(`/v1/devices/${deviceWithoutHwRef.id}/firmware/report`)
+      .send({
+        fromVersion: '2.0.0',
+        toVersion: '2.1.0',
+        status: 'success'
+      })
+      .set('X-Test-Uid', 'test-user-1')
+      .expect(412);
+
+    expect(response.body).toMatchObject({
+      code: 'failed_precondition',
+      message: 'Device hardware version not found'
     });
   });
 });

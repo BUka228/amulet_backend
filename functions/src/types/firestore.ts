@@ -234,6 +234,7 @@ export interface Firmware extends BaseDocument {
 export interface FirmwareReport extends BaseDocument {
   deviceId: string;
   ownerId: string;
+  hardwareVersion: number;
   fromVersion: string;
   toVersion: string;
   status: 'success' | 'failed' | 'cancelled';

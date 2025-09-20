@@ -152,6 +152,15 @@ otaRouter.post('/devices/:id/firmware/report', validateFirmwareReport(), async (
       return sendError(res, { code: 'permission_denied', message: 'Access denied' });
     }
 
+    // Получаем hardwareVersion из данных устройства
+    const hardwareVersion = deviceData['hardwareVersion'] as number | undefined;
+    if (hardwareVersion === undefined) {
+      return sendError(res, { 
+        code: 'failed_precondition', 
+        message: 'Device hardware version not found' 
+      });
+    }
+
     const now = FieldValue.serverTimestamp();
     
     // Выполняем операции в транзакции для обеспечения атомарности
@@ -162,6 +171,7 @@ otaRouter.post('/devices/:id/firmware/report', validateFirmwareReport(), async (
         id: reportRef.id,
         deviceId,
         ownerId: uid,
+        hardwareVersion,
         fromVersion,
         toVersion,
         status,
@@ -184,6 +194,7 @@ otaRouter.post('/devices/:id/firmware/report', validateFirmwareReport(), async (
     logger.info('Firmware report received', {
       deviceId,
       ownerId: uid,
+      hardwareVersion,
       fromVersion,
       toVersion,
       status,
