@@ -83,14 +83,7 @@ otaRouter.get('/ota/firmware/latest', async (req: Request, res: Response) => {
     
     // Проверяем, нужна ли обновление
     if (firmware.version === currentFirmware) {
-      return res.status(200).json({
-        version: firmware.version,
-        notes: firmware.releaseNotes,
-        url: firmware.downloadUrl,
-        checksum: firmware.checksum,
-        size: firmware.size,
-        updateAvailable: false
-      } as GetFirmwareResponse & { updateAvailable: boolean });
+      return res.status(204).end();
     }
 
     // Проверяем совместимость версий
@@ -111,15 +104,7 @@ otaRouter.get('/ota/firmware/latest', async (req: Request, res: Response) => {
     // Проверяем rollout percentage (для постепенного развёртывания)
     const rolloutCheck = Math.random() * 100;
     if (rolloutCheck > firmware.rolloutPercentage) {
-      return res.status(200).json({
-        version: firmware.version,
-        notes: firmware.releaseNotes,
-        url: firmware.downloadUrl,
-        checksum: firmware.checksum,
-        size: firmware.size,
-        updateAvailable: false,
-        rolloutReason: 'Not eligible for rollout'
-      } as GetFirmwareResponse & { updateAvailable: boolean; rolloutReason?: string });
+      return res.status(204).end();
     }
 
     return res.status(200).json({

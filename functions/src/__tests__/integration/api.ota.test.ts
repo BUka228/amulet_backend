@@ -125,30 +125,33 @@ describe('GET /v1/ota/firmware/latest', () => {
     const response = await request(app)
       .get('/v1/ota/firmware/latest')
       .query({ hardware: 200, currentFirmware: '2.1.0' })
-      .set('X-Test-Uid', 'test-user-1')
-      .expect(200);
+      .set('X-Test-Uid', 'test-user-1');
 
-    expect(response.body).toMatchObject({
-      version: '2.2.0',
-      notes: expect.stringContaining('Экспериментальная версия'),
-      url: expect.stringContaining('v2.2.0'),
-      checksum: expect.stringMatching(/^[a-f0-9]{40}$/),
-      size: expect.any(Number),
-      updateAvailable: false
-    });
+    // Может вернуть либо 200 (если попал в rollout), либо 204 (если не попал)
+    expect([200, 204]).toContain(response.status);
+    
+    if (response.status === 200) {
+      expect(response.body).toMatchObject({
+        version: '2.2.0',
+        notes: expect.stringContaining('Экспериментальная версия'),
+        url: expect.stringContaining('v2.2.0'),
+        checksum: expect.stringMatching(/^[a-f0-9]{40}$/),
+        size: expect.any(Number),
+        updateAvailable: true
+      });
+    } else {
+      expect(response.body).toEqual({});
+    }
   });
 
-  it('должен возвращать updateAvailable: false для самой новой версии', async () => {
+  it('должен возвращать 204 No Content для самой новой версии', async () => {
     const response = await request(app)
       .get('/v1/ota/firmware/latest')
       .query({ hardware: 100, currentFirmware: '1.1.0' })
       .set('X-Test-Uid', 'test-user-1')
-      .expect(200);
+      .expect(204);
 
-    expect(response.body).toMatchObject({
-      version: '1.1.0',
-      updateAvailable: false
-    });
+    expect(response.body).toEqual({});
   });
 
   it('должен возвращать 404 если нет прошивки для версии железа', async () => {
@@ -209,12 +212,9 @@ describe('GET /v1/ota/firmware/latest', () => {
       .get('/v1/ota/firmware/latest')
       .query({ hardware: 100, currentFirmware: '1.1.0' })
       .set('X-Test-Uid', 'test-user-1')
-      .expect(200);
+      .expect(204);
 
-    expect(response.body).toMatchObject({
-      updateAvailable: false,
-      rolloutReason: 'Not eligible for rollout'
-    });
+    expect(response.body).toEqual({});
   });
 });
 
