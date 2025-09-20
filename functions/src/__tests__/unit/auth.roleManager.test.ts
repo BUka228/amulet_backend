@@ -14,6 +14,15 @@ jest.mock('firebase-admin', () => ({
   })),
 }));
 
+// Мокаем Firestore
+jest.mock('../../core/firebase', () => ({
+  db: {
+    collection: jest.fn(),
+  },
+}));
+
+import { db } from '../../core/firebase';
+
 const mockAuth = admin.auth as jest.MockedFunction<typeof admin.auth>;
 
 describe('RoleManager', () => {
@@ -36,7 +45,7 @@ describe('RoleManager', () => {
   });
 
   describe('assignRole', () => {
-    test('should assign admin role to user', async () => {
+    test('should assign admin role to user and update Firestore', async () => {
       const uid = 'test-user';
       const role = 'admin';
       const value = true;
@@ -49,6 +58,14 @@ describe('RoleManager', () => {
       mockGetUser.mockResolvedValue(mockUser as any);
       mockSetCustomUserClaims.mockResolvedValue(undefined);
 
+      // Мокаем Firestore обновление
+      const mockSet = jest.fn().mockResolvedValue(undefined);
+      (db.collection as jest.Mock).mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          set: mockSet
+        })
+      });
+
       await RoleManager.assignRole(uid, role, value);
 
       expect(mockGetUser).toHaveBeenCalledWith(uid);
@@ -56,6 +73,12 @@ describe('RoleManager', () => {
         existing: 'claim',
         admin: true
       });
+      expect(db.collection).toHaveBeenCalledWith('users');
+      expect(mockSet).toHaveBeenCalledWith({
+        roles: {
+          [role]: value
+        }
+      }, { merge: true });
     });
 
     test('should assign moderator role to user', async () => {
@@ -111,7 +134,7 @@ describe('RoleManager', () => {
   });
 
   describe('revokeRole', () => {
-    test('should revoke admin role from user', async () => {
+    test('should revoke admin role from user and update Firestore', async () => {
       const uid = 'test-user';
       const role = 'admin';
       
@@ -127,6 +150,14 @@ describe('RoleManager', () => {
       mockGetUser.mockResolvedValue(mockUser as any);
       mockSetCustomUserClaims.mockResolvedValue(undefined);
 
+      // Мокаем Firestore обновление
+      const mockSet = jest.fn().mockResolvedValue(undefined);
+      (db.collection as jest.Mock).mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          set: mockSet
+        })
+      });
+
       await RoleManager.revokeRole(uid, role);
 
       expect(mockGetUser).toHaveBeenCalledWith(uid);
@@ -134,6 +165,12 @@ describe('RoleManager', () => {
         moderator: true,
         other: 'claim'
       });
+      expect(db.collection).toHaveBeenCalledWith('users');
+      expect(mockSet).toHaveBeenCalledWith({
+        roles: {
+          [role]: false
+        }
+      }, { merge: true });
     });
 
     test('should revoke moderator role from user', async () => {
@@ -307,11 +344,39 @@ describe('RoleManager', () => {
   });
 
   describe('getUsersWithRole', () => {
-    test('should return empty array (not implemented)', async () => {
+    test('should get users with role from Firestore', async () => {
       const role = 'admin';
       
-      const result = await RoleManager.getUsersWithRole(role);
+      // Мокаем Firestore запрос
+      const mockSnapshot = {
+        docs: [
+          { id: 'user1' },
+          { id: 'user2' },
+          { id: 'user3' }
+        ]
+      };
+      
+      (db.collection as jest.Mock).mockReturnValue({
+        where: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockSnapshot)
+        })
+      });
 
+      const result = await RoleManager.getUsersWithRole(role);
+      expect(result).toEqual(['user1', 'user2', 'user3']);
+      expect(db.collection).toHaveBeenCalledWith('users');
+    });
+
+    test('should handle error when getting users with role', async () => {
+      const role = 'admin';
+      
+      (db.collection as jest.Mock).mockReturnValue({
+        where: jest.fn().mockReturnValue({
+          get: jest.fn().mockRejectedValue(new Error('Firestore error'))
+        })
+      });
+
+      const result = await RoleManager.getUsersWithRole(role);
       expect(result).toEqual([]);
     });
   });

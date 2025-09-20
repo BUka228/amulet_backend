@@ -228,6 +228,43 @@ adminRouter.post('/admin/roles/assign', async (req: Request, res: Response) => {
   }
 });
 
+// GET /v1/admin/roles/users — получить пользователей с определенной ролью
+adminRouter.get('/admin/roles/users', async (req: Request, res: Response) => {
+  try {
+    const adminUid = req.auth?.uid;
+    const { role } = req.query;
+    
+    if (!adminUid) {
+      return sendError(res, { code: 'unauthenticated', message: 'Authentication required' });
+    }
+
+    if (!role || typeof role !== 'string' || !['admin', 'moderator'].includes(role)) {
+      return sendError(res, { code: 'invalid_argument', message: 'Valid role parameter required' });
+    }
+
+    const userIds = await RoleManager.getUsersWithRole(role as 'admin' | 'moderator');
+    
+    logger.info('Users with role retrieved', {
+      adminUid,
+      role,
+      count: userIds.length
+    });
+
+    return res.status(200).json({ 
+      role,
+      users: userIds,
+      count: userIds.length
+    });
+  } catch (error) {
+    logger.error('Get users with role failed', { 
+      adminUid: req.auth?.uid, 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      requestId: req.headers['x-request-id']
+    });
+    return sendError(res, { code: 'unavailable', message: 'Failed to get users with role' });
+  }
+});
+
 // GET /v1/admin/roles/:uid — получить роли пользователя
 adminRouter.get('/admin/roles/:uid', async (req: Request, res: Response) => {
   try {

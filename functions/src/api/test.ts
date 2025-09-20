@@ -36,7 +36,15 @@ if (process.env.NODE_ENV === 'test') {
     const testAdmin = (req.headers['x-test-admin'] as string) || '';
     if (!req.auth && testUid) {
       // Эмулируем аутентификацию тестового пользователя только при наличии X-Test-Uid
+      // Устанавливаем роли в зависимости от UID для тестов
+      let customClaims = {};
+      if (testAdmin === '1' || testUid === 'u_admin') {
+        customClaims = { admin: true };
+      } else if (testUid === 'integration-test-uid') {
+        customClaims = { admin: true, moderator: true };
+      }
       (req as unknown as { auth: unknown }).auth = {
+        uid: testUid,
         user: {
           uid: testUid,
           email: 'test@example.com',
@@ -45,10 +53,11 @@ if (process.env.NODE_ENV === 'test') {
           emailVerified: true,
           disabled: false,
           metadata: {},
-          customClaims: testAdmin === '1' ? { admin: true } : {}
+          customClaims
         },
         token: 'test-token',
-        isAuthenticated: true
+        isAuthenticated: true,
+        customClaims
       };
     }
     next();

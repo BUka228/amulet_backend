@@ -6,6 +6,7 @@ import * as admin from 'firebase-admin';
 import { Request, Response, NextFunction } from 'express';
 import { AuthContext, AuthError, AppCheckContext, AuthMiddlewareOptions } from '../types/auth';
 import * as logger from 'firebase-functions/logger';
+import { db } from './firebase';
 
 // Расширяем типы Express для добавления auth контекста
 // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -71,6 +72,7 @@ export const authenticateToken = (options: AuthMiddlewareOptions = {}) => {
       // Создание контекста аутентификации
       // Если userRecord уже получен, используем его, иначе создаем из decodedToken
       const authContext: AuthContext = userRecord ? {
+        uid: userRecord.uid,
         user: {
           uid: userRecord.uid,
           email: userRecord.email,
@@ -85,8 +87,10 @@ export const authenticateToken = (options: AuthMiddlewareOptions = {}) => {
           customClaims: userRecord.customClaims
         },
         token: idToken,
-        isAuthenticated: true
+        isAuthenticated: true,
+        customClaims: userRecord.customClaims
       } : {
+        uid: decodedToken.uid,
         user: {
           uid: decodedToken.uid,
           email: decodedToken.email,
@@ -101,7 +105,8 @@ export const authenticateToken = (options: AuthMiddlewareOptions = {}) => {
           customClaims: {} // decodedToken не содержит актуальные custom claims
         },
         token: idToken,
-        isAuthenticated: true
+        isAuthenticated: true,
+        customClaims: {} // decodedToken не содержит актуальные custom claims
       };
 
       req.auth = authContext;
@@ -191,7 +196,9 @@ export const verifyAppCheck = async (req: Request, res: Response, next: NextFunc
  */
 export const requireRole = (role: string) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.auth?.user.customClaims?.[role]) {
+    // Проверяем роль в customClaims на уровне auth или user
+    const hasRole = req.auth?.customClaims?.[role] || req.auth?.user?.customClaims?.[role];
+    if (!hasRole) {
       return sendAuthError(res, {
         code: 'permission_denied',
         message: `Role '${role}' required`
@@ -285,10 +292,14 @@ export class RoleManager {
     const user = await admin.auth().getUser(uid);
     const currentClaims = user.customClaims || {};
     
+    // Обновляем custom claims в Firebase Auth
     await admin.auth().setCustomUserClaims(uid, {
       ...currentClaims,
       [role]: value
     });
+    
+    // Дублируем роли в Firestore для быстрого поиска
+    await this.updateUserRolesInFirestore(uid, role, value);
     
     logger.info('Role assigned', {
       uid,
@@ -308,7 +319,11 @@ export class RoleManager {
     const newClaims = { ...currentClaims };
     delete newClaims[role];
     
+    // Обновляем custom claims в Firebase Auth
     await admin.auth().setCustomUserClaims(uid, newClaims);
+    
+    // Обновляем роли в Firestore (устанавливаем false)
+    await this.updateUserRolesInFirestore(uid, role, false);
     
     logger.info('Role revoked', {
       uid,
@@ -339,15 +354,57 @@ export class RoleManager {
   }
 
   /**
+   * Обновить роли пользователя в Firestore
+   */
+  private static async updateUserRolesInFirestore(uid: string, role: 'admin' | 'moderator', value: boolean): Promise<void> {
+    try {
+      const userRef = db.collection('users').doc(uid);
+      await userRef.set({
+        roles: {
+          [role]: value
+        }
+      }, { merge: true });
+      
+      logger.debug('User roles updated in Firestore', {
+        uid,
+        role,
+        value
+      });
+    } catch (error) {
+      logger.error('Failed to update user roles in Firestore', {
+        uid,
+        role,
+        value,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      // Не выбрасываем ошибку, чтобы не нарушить основную логику назначения ролей
+    }
+  }
+
+  /**
    * Получить список пользователей с определенной ролью
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  static async getUsersWithRole(_role: 'admin' | 'moderator'): Promise<string[]> {
-    // Firebase Admin SDK не предоставляет прямой способ поиска по custom claims
-    // В реальном приложении можно использовать Cloud Functions или хранить роли в Firestore
-    // Для демонстрации возвращаем пустой массив
-    logger.warn('getUsersWithRole not implemented - requires Firestore-based role storage');
-    return [];
+  static async getUsersWithRole(role: 'admin' | 'moderator'): Promise<string[]> {
+    try {
+      const snapshot = await db.collection('users')
+        .where(`roles.${role}`, '==', true)
+        .get();
+      
+      const uids = snapshot.docs.map((doc) => doc.id);
+      
+      logger.info('Users with role retrieved', {
+        role,
+        count: uids.length
+      });
+      
+      return uids;
+    } catch (error) {
+      logger.error('Failed to get users with role', {
+        role,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      return [];
+    }
   }
 }
 

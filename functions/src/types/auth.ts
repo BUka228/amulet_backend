@@ -17,9 +17,11 @@ export interface AuthUser {
 }
 
 export interface AuthContext {
+  uid: string;
   user: AuthUser;
   token: string;
   isAuthenticated: boolean;
+  customClaims?: Record<string, string | number | boolean>;
 }
 
 export interface AuthError {

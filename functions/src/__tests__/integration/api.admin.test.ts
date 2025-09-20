@@ -250,6 +250,46 @@ describe('Integration: Admin Role Management', () => {
     expect(res.body.roles.admin).toBe(false);
   });
 
+  test('get users with role', async () => {
+    // Сначала создаем пользователей с ролями в Firestore
+    await db.collection('users').doc('test-user-1').set({
+      roles: { admin: true }
+    });
+    
+    await db.collection('users').doc('test-user-2').set({
+      roles: { moderator: true }
+    });
+    
+    await db.collection('users').doc('test-user-3').set({
+      roles: { admin: true, moderator: true }
+    });
+
+    const res = await request(app)
+      .get('/v1/admin/roles/users?role=admin')
+      .set('X-Test-Uid', adminUid)
+      .set('X-Test-Admin', '1')
+      .expect(200);
+    
+    expect(res.body).toHaveProperty('role', 'admin');
+    expect(res.body).toHaveProperty('users');
+    expect(res.body).toHaveProperty('count');
+    expect(Array.isArray(res.body.users)).toBe(true);
+    expect(res.body.users).toContain('test-user-1');
+    expect(res.body.users).toContain('test-user-3');
+    expect(res.body.count).toBe(2);
+  });
+
+  test('get users with role - invalid role parameter', async () => {
+    const res = await request(app)
+      .get('/v1/admin/roles/users?role=invalid')
+      .set('X-Test-Uid', adminUid)
+      .set('X-Test-Admin', '1')
+      .expect(400);
+    
+    expect(res.body).toHaveProperty('code', 'invalid_argument');
+    expect(res.body).toHaveProperty('message', 'Valid role parameter required');
+  });
+
   test('reject non-admin role assignment', async () => {
     await request(app)
       .post('/v1/admin/roles/assign')
