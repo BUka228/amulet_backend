@@ -273,3 +273,94 @@ export function hasRole(req: Request, role: string): boolean {
 export function isOwner(req: Request, resourceOwnerId: string): boolean {
   return req.auth?.user.uid === resourceOwnerId;
 }
+
+/**
+ * Утилиты для управления ролями (custom claims)
+ */
+export class RoleManager {
+  /**
+   * Назначить роль пользователю
+   */
+  static async assignRole(uid: string, role: 'admin' | 'moderator', value = true): Promise<void> {
+    const user = await admin.auth().getUser(uid);
+    const currentClaims = user.customClaims || {};
+    
+    await admin.auth().setCustomUserClaims(uid, {
+      ...currentClaims,
+      [role]: value
+    });
+    
+    logger.info('Role assigned', {
+      uid,
+      role,
+      value,
+      previousClaims: currentClaims
+    });
+  }
+
+  /**
+   * Отозвать роль у пользователя
+   */
+  static async revokeRole(uid: string, role: 'admin' | 'moderator'): Promise<void> {
+    const user = await admin.auth().getUser(uid);
+    const currentClaims = user.customClaims || {};
+    
+    const newClaims = { ...currentClaims };
+    delete newClaims[role];
+    
+    await admin.auth().setCustomUserClaims(uid, newClaims);
+    
+    logger.info('Role revoked', {
+      uid,
+      role,
+      previousClaims: currentClaims
+    });
+  }
+
+  /**
+   * Получить все роли пользователя
+   */
+  static async getUserRoles(uid: string): Promise<Record<string, boolean>> {
+    const user = await admin.auth().getUser(uid);
+    const claims = user.customClaims || {};
+    
+    return {
+      admin: Boolean(claims.admin),
+      moderator: Boolean(claims.moderator)
+    };
+  }
+
+  /**
+   * Проверить, имеет ли пользователь роль
+   */
+  static async hasRole(uid: string, role: 'admin' | 'moderator'): Promise<boolean> {
+    const roles = await this.getUserRoles(uid);
+    return roles[role];
+  }
+
+  /**
+   * Получить список пользователей с определенной ролью
+   */
+  static async getUsersWithRole(_role: 'admin' | 'moderator'): Promise<string[]> {
+    // Firebase Admin SDK не предоставляет прямой способ поиска по custom claims
+    // В реальном приложении можно использовать Cloud Functions или хранить роли в Firestore
+    // Для демонстрации возвращаем пустой массив
+    logger.warn('getUsersWithRole not implemented - requires Firestore-based role storage');
+    return [];
+  }
+}
+
+/**
+ * Middleware для проверки роли moderator
+ */
+export const requireModerator = () => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.auth?.user.customClaims?.['moderator'] && !req.auth?.user.customClaims?.['admin']) {
+      return sendAuthError(res, {
+        code: 'permission_denied',
+        message: 'Moderator or admin role required'
+      });
+    }
+    next();
+  };
+};
